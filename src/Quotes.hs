@@ -4,62 +4,11 @@
 
 module Quotes where
 
-import Control.Concurrent ( MVar, newMVar, modifyMVar_, readMVar )
+import Control.Concurrent ( newMVar, modifyMVar_ )
 import Data.Maybe ( fromMaybe )
-import Data.Sequence ( Seq, (|>) )
-import qualified Data.Sequence as S
-import qualified Data.ByteString.Lazy as BSL
 import Language.Haskell.TH
-import qualified Text.ProtocolBuffers.Header as P'
 
--- keep this abstract so that we can use a Seq or Vector later
-type ContainerType a = Seq a
-emptyContainer :: ContainerType a
-emptyContainer = S.empty
-
-appendContainer :: a -> ContainerType a -> ContainerType a
-appendContainer x xs = xs |> x
-
-data PContainer = PCDouble (MVar (ContainerType Double))
-                | PCFloat (MVar (ContainerType Float))
-                | PCInt32 (MVar (ContainerType P'.Int32))
-                | PCInt64 (MVar (ContainerType P'.Int64))
-                | PCWord32 (MVar (ContainerType P'.Word32))
-                | PCWord64 (MVar (ContainerType P'.Word64))
-                | PCBool (MVar (ContainerType Bool))
-                | PCUtf8 (MVar (ContainerType P'.Utf8))
---                | PCByteString (MVar (ContainerType (P'.ByteString)))
-                | PCByteString (MVar (ContainerType (BSL.ByteString)))
-
-data VarInfo = VarInfo String PContainer
-printVarInfo :: VarInfo -> IO ()
-printVarInfo (VarInfo name (PCDouble mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Double)     "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCFloat mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Float)      "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCInt32 mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Int32)      "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCInt64 mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Int64)      "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCWord32 mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Word32)     "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCWord64 mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Word64)     "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCBool mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Bool)       "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCUtf8 mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(Utf8)       "++ name ++ ": " ++ show vals
-printVarInfo (VarInfo name (PCByteString mv)) = do
-  vals <- readMVar mv
-  putStrLn $ "(ByteString) "++ name ++ ": " ++ show vals
+import PlotTypes
 
 data Output = Output { outputString :: String
                      , outputNewMvStmt :: StmtQ
@@ -114,28 +63,40 @@ handleField prefix (name, ConT type') = do
       utf8Name <- lookupTypeName' "P'.Utf8"
       byteStringName <- lookupTypeName' "P'.ByteString"
 
-      let -- create a new mvar
-          mkmvarStmt = bindS (varP mn) [| newMVar emptyContainer |]
+      containerPatName <- newName ("append_" ++ nameBase name)
+      let lookupValueName' :: String -> Q Name
+          lookupValueName' str = fmap (fromMaybe (error msg')) (lookupValueName str)
+            where
+              msg' = "can't lookup \""++show type'++"\" with lookupValueName \""++str++"\""
+      let -- container variable
+          (constructorExp,constructorName') =
+            if | type' == doubleName     -> ([| PCDouble |],     lookupValueName' "PCDouble")
+               | type' == floatName      -> ([| PCFloat |],      lookupValueName' "PCFloat")
+               | type' == int32Name      -> ([| PCInt32 |],      lookupValueName' "PCInt32")
+               | type' == int64Name      -> ([| PCInt64 |],      lookupValueName' "PCInt64")
+               | type' == word32Name     -> ([| PCWord32 |],     lookupValueName' "PCWord32")
+               | type' == word64Name     -> ([| PCWord64 |],     lookupValueName' "PCWord64")
+               | type' == boolName       -> ([| PCBool |],       lookupValueName' "PCBool")
+               | type' == utf8Name       -> ([| PCUtf8 |],       lookupValueName' "PCUtf8")
+               | type' == byteStringName -> ([| PCByteString |], lookupValueName' "PCByteString")
+               | otherwise -> error $ "handleField: unhandled type ("++show constructors++")"
+      constructorName <- constructorName'
 
-          -- update mvar when new measurement comes in
-          updatemvStmt =
-            noBindS [| modifyMVar_ $(varE mn) (return . appendContainer $(varE patternName)) |]
+      let -- update mvar when new measurement comes in
+          modify = lam1E (conP constructorName [varP containerPatName]) [| return $ $(conE constructorName) $ appendContainer $(varE patternName) $(varE containerPatName) |]
+          updatemvStmt = noBindS [| modifyMVar_ $(varE mn) $(modify) |]
 
           -- human readable name
           stringName = prefix ++ nameBase name
-      
+
+          -- create a new mvar
+          mkmvarStmt = bindS (varP mn) [| newMVar ($(constructorExp) emptyContainer) |]
+
           -- container variable
-          containerExp = if | type' == doubleName -> [| PCDouble $(varE mn) |]
-                            | type' == floatName -> [| PCFloat $(varE mn) |]
-                            | type' == int32Name -> [| PCInt32 $(varE mn) |]
-                            | type' == int64Name -> [| PCInt64 $(varE mn) |]
-                            | type' == word32Name -> [| PCWord32 $(varE mn) |]
-                            | type' == word64Name -> [| PCWord64 $(varE mn) |]
-                            | type' == boolName -> [| PCBool $(varE mn) |]
-                            | type' == utf8Name -> [| PCUtf8 $(varE mn) |]
-                            | type' == byteStringName -> [| PCByteString $(varE mn) |]
-                            | otherwise -> error $ "handleField: unhandled type ("++show constructors++")"++"\n    "++msg
+          containerExp = varE mn
+
       return (pattern, [Output stringName mkmvarStmt updatemvStmt containerExp])
+
 -- handle optional fields
 handleField prefix x@(name, AppT (ConT con) (ConT type')) = do
   (Just maybeName) <- lookupTypeName "Maybe"

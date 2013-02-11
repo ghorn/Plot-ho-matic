@@ -1,0 +1,40 @@
+name:                plot-ho-matic
+version:             0.1.0.0
+synopsis:            Line plotter for protobufs
+-- description:         
+license:             BSD3
+license-file:        LICENSE
+author:              Greg Horn
+maintainer:          gregmainland@gmail.com
+-- copyright:           
+category:            Graphics
+build-type:          Simple
+cabal-version:       >=1.8
+
+--library:
+--  -- exposed-modules:     
+--  -- other-modules:       
+--  build-depends:       base ==4.6.*
+
+executable plot-ho-matic
+  hs-source-dirs:    src
+  main-is:           Main.hs
+--  other-modules:     DrawAC
+  build-depends:     base >= 4.5.0 && < 4.7,
+                     protocol-buffers,
+                     random,
+                     bytestring,
+                     containers,
+                     template-haskell,
+                     OpenGL,
+                     glib,
+                     gtk,
+                     gtkglext
+--                     ekg
+--  if os(OSX)
+--    cpp-options:     -DOSX
+--    build-depends:   zeromq3-haskell
+--  else
+--    build-depends:   zeromq-haskell
+--
+--  ghc-options:       -O2 -threaded -with-rtsopts=-T

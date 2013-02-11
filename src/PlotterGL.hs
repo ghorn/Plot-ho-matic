@@ -3,96 +3,30 @@
 module PlotterGL where
 
 import qualified Control.Concurrent as C
+import Control.Monad ( zipWithM_ )
+--import qualified Data.Foldable as F
+import Data.Sequence ( Seq )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as G
 import qualified Graphics.UI.Gtk as Gtk
-import qualified Graphics.UI.Gtk.ModelView as New
 import qualified Graphics.UI.Gtk.OpenGL as GtkGL
-import Graphics.Rendering.OpenGL as GL
-
+import Graphics.Rendering.OpenGL ( ($=) )
+import qualified Graphics.Rendering.OpenGL as GL
 import System.Glib.Signals (on)
-import Data.List ( isPrefixOf )
-import Data.Char ( toLower )
 
  
-import Quotes ( PContainer(..), VarInfo(..) )
-import DrawLine ( displayGraph )
+import Colors ( niceColors )
+import DrawLine ( drawLine )
+import PlotTypes ( PContainer(..), VarInfo(..), clearVarInfo, toFrac )
 
-data VarInfo' = VarInfo' { viName :: String
-                         , viPc :: PContainer
-                         , viMarked :: Bool
-                         }
+data ListViewInfo = ListViewInfo String (C.MVar PContainer) Bool
+
+-- what the graph should draw
+data GraphInfo = GraphInfo [(String, C.MVar PContainer)]
+
 
 runPlotter :: [VarInfo] -> [C.ThreadId] -> IO ()
-runPlotter infos backgroundThreads = do
-  _ <- G.initGUI
-
-  win <- G.windowNew
-  graphWindows <- C.newMVar []
-  let myQuit = do
-        mapM_ C.killThread backgroundThreads
-        gws <- C.readMVar graphWindows
-        mapM_ Gtk.widgetDestroy gws
-        G.mainQuit
-  _ <- G.onDestroy win myQuit
-
-  -- create a new tree model
-  model <- G.listStoreNew $ map (\(VarInfo st pc) -> VarInfo' st pc False) infos
-  view <- New.treeViewNewWithModel model
-
-  New.treeViewSetHeadersVisible view True
-
-  -- add three columns
-  col1 <- New.treeViewColumnNew
-  col2 <- New.treeViewColumnNew
-  col3 <- New.treeViewColumnNew
-
-  New.treeViewColumnSetTitle col1 "name"
-  New.treeViewColumnSetTitle col2 "Int column"
-  New.treeViewColumnSetTitle col3 "show?"
-
-  renderer1 <- New.cellRendererTextNew
-  renderer2 <- New.cellRendererTextNew
-  renderer3 <- New.cellRendererToggleNew
-
-  New.cellLayoutPackStart col1 renderer1 True
-  New.cellLayoutPackStart col2 renderer2 True
-  New.cellLayoutPackStart col3 renderer3 True
-
-  New.cellLayoutSetAttributes col1 renderer1 model $ \row -> [ New.cellText := viName row ]
-  New.cellLayoutSetAttributes col2 renderer2 model $ \_ -> [ New.cellText := show "waaa" ]
-  New.cellLayoutSetAttributes col3 renderer3 model $ \row -> [ New.cellToggleActive := viMarked row ]
-
-  _ <- New.treeViewAppendColumn view col1
-  _ <- New.treeViewAppendColumn view col2
-  _ <- New.treeViewAppendColumn view col3
-
-  -- update the model when the toggle buttons are activated
-  _ <- on renderer3 G.cellToggled $ \pathStr -> do
-    let (i:_) = G.stringToTreePath pathStr
-    val <- G.listStoreGetValue model i
-    G.listStoreSetValue model i val { viMarked = not (viMarked val) }
-
-
-  -- enable interactive search
-  New.treeViewSetEnableSearch view True
-  New.treeViewSetSearchEqualFunc view $ Just $ \str iter -> do
-    (i:_) <- G.treeModelGetPath model iter
-    row <- G.listStoreGetValue model i
-    return (map toLower str `isPrefixOf` map toLower (viName row))
-
-  G.containerAdd win view
-  G.widgetShowAll win
-
-  glWin <- setupGlstuff infos
-  C.modifyMVar_ graphWindows (return . (glWin:))
-  
-  G.mainGUI
-
-
-setupGlstuff :: [VarInfo] -> IO Gtk.Window
-setupGlstuff infos = do
---  _ <- Gtk.initGUI
+runPlotter infos backgroundThreadsToKill = do
+  _ <- Gtk.initGUI
  
   -- Initialise the Gtk+ OpenGL extension
   -- (including reading various command line parameters)
@@ -103,59 +37,174 @@ setupGlstuff infos = do
   glconfig <- GtkGL.glConfigNew [GtkGL.GLModeRGBA,
                                  GtkGL.GLModeDepth,
                                  GtkGL.GLModeDouble]
- 
+
+  -- start the main window
+  win <- Gtk.windowNew
+  _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
+                   , Gtk.windowTitle := "Plot-ho-matic"
+                   ]
+  
+  graphWindowsToBeKilled <- C.newMVar []
+  let myQuit = do
+        gws <- C.readMVar graphWindowsToBeKilled
+        mapM_ Gtk.widgetDestroy gws
+        mapM_ C.killThread backgroundThreadsToKill
+        Gtk.mainQuit
+  _ <- Gtk.onDestroy win myQuit
+
+  buttonQuit <- Gtk.buttonNewWithLabel "QUIT"
+  _ <- Gtk.onClicked buttonQuit (Gtk.widgetDestroy win)
+
+  buttonClear <- Gtk.buttonNewWithLabel "Clear All Values"
+  _ <- Gtk.onClicked buttonClear $ mapM_ clearVarInfo infos
+
+  -- button to create a new graph
+  buttonNewGraph <- Gtk.buttonNewWithLabel "New Graph"
+  _ <- Gtk.onClicked buttonNewGraph (newGraph graphWindowsToBeKilled infos glconfig)
+
+  -- vbox to hold buttons
+  vbox <- Gtk.vBoxNew False 4
+--  Gtk.containerAdd win button
+  _ <- Gtk.set win [ Gtk.containerChild := vbox ]
+  Gtk.set vbox [ Gtk.containerChild := buttonQuit
+               , Gtk.containerChild := buttonNewGraph
+               , Gtk.containerChild := buttonClear
+               ]
+
+  Gtk.widgetShowAll win
+  
+  Gtk.mainGUI
+
+
+-- make a new graph window
+newGraph :: C.MVar [Gtk.Window] -> [VarInfo] -> GtkGL.GLConfig -> IO ()
+newGraph graphWindowsToBeKilled infos glconfig = do
+  win <- Gtk.windowNew
+  _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
+                   , Gtk.windowTitle := "I am a graph"
+                   ]
+
+  -- create a new tree model
+  model <- Gtk.listStoreNew $ map (\(VarInfo st pc) -> ListViewInfo st pc False) infos
+  view <- Gtk.treeViewNewWithModel model
+
+  Gtk.treeViewSetHeadersVisible view True
+
+  -- add three columns
+  col1 <- Gtk.treeViewColumnNew
+  col2 <- Gtk.treeViewColumnNew
+
+  Gtk.treeViewColumnSetTitle col1 "name"
+  Gtk.treeViewColumnSetTitle col2 "visible?"
+
+  renderer1 <- Gtk.cellRendererTextNew
+  renderer2 <- Gtk.cellRendererToggleNew
+
+  Gtk.cellLayoutPackStart col1 renderer1 True
+  Gtk.cellLayoutPackStart col2 renderer2 True
+
+  Gtk.cellLayoutSetAttributes col1 renderer1 model $ \(ListViewInfo name _ _) -> [ Gtk.cellText := name]
+  Gtk.cellLayoutSetAttributes col2 renderer2 model $ \(ListViewInfo _ _ marked) -> [ Gtk.cellToggleActive := marked ]
+
+  _ <- Gtk.treeViewAppendColumn view col1
+  _ <- Gtk.treeViewAppendColumn view col2
+
+  -- update the model when the toggle buttons are activated
+  graphInfoMVar <- C.newMVar (GraphInfo [])
+  _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
+    -- toggle the check mark
+    let (i:_) = Gtk.stringToTreePath pathStr
+    (ListViewInfo n p val) <- Gtk.listStoreGetValue model i
+    Gtk.listStoreSetValue model i (ListViewInfo n p (not val))
+
+    -- update the graph information
+    varinfos' <- Gtk.listStoreToList model
+    let newGraphInfo = GraphInfo [(str, pc) | (ListViewInfo str pc marked) <- varinfos', marked]
+    _ <- C.swapMVar graphInfoMVar newGraphInfo
+    return ()
+
+  let displayFun = do
+        gi <- C.readMVar graphInfoMVar
+        displayGraph gi
+  canvas <- makeGraphCanvas glconfig displayFun
+
+  -- vbox to hold treeview and gl drawing
+  hbox <- Gtk.hBoxNew False 4
+  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
+  Gtk.set hbox [ Gtk.containerChild := view
+               , Gtk.containerChild := canvas
+               ]
+
+  C.modifyMVar_ graphWindowsToBeKilled (return . (win:))
+
+  Gtk.widgetShowAll win
+  
+  return ()
+
+
+
+makeGraphCanvas :: GtkGL.GLConfig -> IO () -> IO GtkGL.GLDrawingArea
+makeGraphCanvas glconfig displayFun = do
   -- Create an OpenGL drawing area widget
-  glCanvas <- GtkGL.glDrawingAreaNew glconfig
+  canvas <- GtkGL.glDrawingAreaNew glconfig
  
-  _ <- Gtk.widgetSetSizeRequest glCanvas 250 250
+  _ <- Gtk.widgetSetSizeRequest canvas 250 250
  
   -- Initialise some GL setting just before the canvas first gets shown
   -- (We can't initialise these things earlier since the GL resources that
   -- we are using wouldn't heve been setup yet)
-  _ <- Gtk.onRealize glCanvas $ GtkGL.withGLDrawingArea glCanvas $ \_ -> do
-    clearColor $= (Color4 0.0 0.0 0.0 0.0)
-    matrixMode $= Projection
-    loadIdentity
-    ortho 0.0 1.0 0.0 1.0 (-1.0) 1.0
-    depthFunc $= Just Less
-    drawBuffer $= BackBuffers
+  _ <- Gtk.onRealize canvas $ GtkGL.withGLDrawingArea canvas $ \_ -> do
+    GL.clearColor $= (GL.Color4 0.0 0.0 0.0 0.0)
+    GL.matrixMode $= GL.Projection
+    GL.loadIdentity
+    GL.ortho 0.0 1.0 0.0 1.0 (-1.0) 1.0
+    GL.depthFunc $= Just GL.Less
+    GL.drawBuffer $= GL.BackBuffers
  
   -- Set the repaint handler
-  _ <- Gtk.onExpose glCanvas $ \_ -> do
-    GtkGL.withGLDrawingArea glCanvas $ \glwindow -> do
+  _ <- Gtk.onExpose canvas $ \_ -> do
+    GtkGL.withGLDrawingArea canvas $ \glwindow -> do
       GL.clear [GL.DepthBuffer, GL.ColorBuffer]
-      displayGraph infos
+      _ <- displayFun
       GtkGL.glDrawableSwapBuffers glwindow
     return True
  
   -- Setup the animation
   _ <- Gtk.timeoutAddFull (do
-      Gtk.widgetQueueDraw glCanvas
+      Gtk.widgetQueueDraw canvas
       return True)
     Gtk.priorityDefaultIdle animationWaitTime
- 
-  --------------------------------
-  -- Setup the rest of the GUI:
-  --
-  window <- Gtk.windowNew
-  _ <- Gtk.onDestroy window (putStrLn "gl window destroyed")
-  _ <- Gtk.set window [ Gtk.containerBorderWidth := 8
-                      , Gtk.windowTitle := "A graph, yo"
-                      ]
- 
-  vbox <- Gtk.vBoxNew False 4
-  _ <- Gtk.set window [ Gtk.containerChild := vbox ]
- 
-  label <- Gtk.labelNew (Just "Gtk2Hs using OpenGL via HOpenGL!")
-  button <- Gtk.buttonNewWithLabel "Close"
-  _ <- Gtk.onClicked button (Gtk.widgetDestroy window)
-  Gtk.set vbox [ Gtk.containerChild := glCanvas,
-                 Gtk.containerChild := label,
-                 Gtk.containerChild := button ]
- 
-  Gtk.widgetShowAll window
-  return window
+
+  return canvas
 
  
 animationWaitTime :: Int
 animationWaitTime = 3
+
+
+-- Draw the OpenGL polygon.
+displayGraph :: GraphInfo -> IO ()
+displayGraph (GraphInfo gis) = do
+--  let printLog = mapM_ printVarInfo infos
+--  printLog
+  GL.loadIdentity
+  GL.color (GL.Color3 1 1 1 :: GL.Color3 GL.GLfloat)
+  let f (name,mv) = do
+        pc <- C.readMVar mv
+        return (name,toFrac pc :: Seq GL.GLfloat)
+  namePc <- mapM f gis
+  
+--  let getMax seq' = F.foldl' max (-1e100) seq'
+--      getMin seq' = F.foldl' min (1e100) seq'
+--
+--      max' = maximum $ 1e100 : map (getMax . snd) namePc
+--      min' = minimum $ -1e100 : map (getMin . snd) namePc
+--  
+--  GL.matrixMode $= GL.Projection
+--  GL.loadIdentity
+--  GL.ortho 0.0 1.0 min' max' (-1.0) 1.0
+    
+  let drawOne (_,pc) (cr,cg,cb) = do
+        GL.color (GL.Color3 cr cg cb)
+        drawLine pc
+  zipWithM_ drawOne namePc niceColors

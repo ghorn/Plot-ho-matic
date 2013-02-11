@@ -1,11 +1,12 @@
 {-# OPTIONS_GHC -Wall #-}
+--{-# OPTIONS_GHC -ddump-splices #-}
 {-# Language TemplateHaskell #-}
 
 import Control.Concurrent ( forkIO, threadDelay )
 
 import PlotterGL
 import Quotes --( f, MyType(..) )
-
+import PlotTypes
 
 data Xyz = MkXyz { x_ :: Double
                  , y_ :: Double
@@ -16,16 +17,16 @@ data Axyz = MkAxyz { a_ :: Double
                    }
 
 anAxyz :: Axyz
-anAxyz = MkAxyz 7 (MkXyz 1 2 3)
+anAxyz = MkAxyz 7 (MkXyz 1 2 3)-- 4)
 
 increment :: Axyz -> Axyz
-increment (MkAxyz a (MkXyz _ _ _)) = MkAxyz (a+0.1) (MkXyz (sin a) (cos a) ((sin a)*(cos a)))
+increment (MkAxyz a _) = MkAxyz (a+0.5) (MkXyz (sin a) (cos a) ((sin a)*(cos a)))
 
 updateLoop :: Int -> Axyz -> (Axyz -> IO ()) -> IO ()
 updateLoop n anAxyz' receiveNewMessage = do
   receiveNewMessage anAxyz'
-  putStrLn $ "update " ++ show n
-  threadDelay 1000000
+--  putStrLn $ "update " ++ show n
+  threadDelay 100000
   updateLoop (n+1::Int) (increment anAxyz') receiveNewMessage
 
 main :: IO ()

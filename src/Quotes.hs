@@ -1,12 +1,11 @@
 {-# OPTIONS_GHC -Wall #-}
---{-# Language MultiWayIf #-}
+{-# Language MultiWayIf #-}
 {-# Language TemplateHaskell #-}
 
 module Quotes where
 
 import Control.Concurrent ( newMVar, modifyMVar_ )
 import Data.Maybe ( fromMaybe )
-import qualified Data.Map as M
 import Language.Haskell.TH
 
 import PlotTypes
@@ -70,29 +69,17 @@ handleField prefix (name, ConT type') = do
             where
               msg' = "can't lookup \""++show type'++"\" with lookupValueName \""++str++"\""
       let -- container variable
---          (constructorExp,constructorName') =
---            if | type' == doubleName     -> ([| PCDouble |],     lookupValueName' "PCDouble")
---               | type' == floatName      -> ([| PCFloat |],      lookupValueName' "PCFloat")
---               | type' == int32Name      -> ([| PCInt32 |],      lookupValueName' "PCInt32")
---               | type' == int64Name      -> ([| PCInt64 |],      lookupValueName' "PCInt64")
---               | type' == word32Name     -> ([| PCWord32 |],     lookupValueName' "PCWord32")
---               | type' == word64Name     -> ([| PCWord64 |],     lookupValueName' "PCWord64")
---               | type' == boolName       -> ([| PCBool |],       lookupValueName' "PCBool")
---               | type' == utf8Name       -> ([| PCUtf8 |],       lookupValueName' "PCUtf8")
---               | type' == byteStringName -> ([| PCByteString |], lookupValueName' "PCByteString")
---               | otherwise -> error $ "handleField: unhandled type ("++show constructors++")"
-          nameMap = M.fromList [ (doubleName     , ([| PCDouble |],     lookupValueName' "PCDouble"))
-                               , (floatName      , ([| PCFloat |],      lookupValueName' "PCFloat"))
-                               , (int32Name      , ([| PCInt32 |],      lookupValueName' "PCInt32"))
-                               , (int64Name      , ([| PCInt64 |],      lookupValueName' "PCInt64"))
-                               , (word32Name     , ([| PCWord32 |],     lookupValueName' "PCWord32"))
-                               , (word64Name     , ([| PCWord64 |],     lookupValueName' "PCWord64"))
-                               , (boolName       , ([| PCBool |],       lookupValueName' "PCBool"))
-                               , (utf8Name       , ([| PCUtf8 |],       lookupValueName' "PCUtf8"))
-                               , (byteStringName , ([| PCByteString |], lookupValueName' "PCByteString"))
-                               ]
-          msg' = error $ "handleField: unhandled type ("++show constructors++")"
-          (constructorExp,constructorName') = fromMaybe msg' $ M.lookup type' nameMap
+          (constructorExp,constructorName') =
+            if | type' == doubleName     -> ([| PCDouble |],     lookupValueName' "PCDouble")
+               | type' == floatName      -> ([| PCFloat |],      lookupValueName' "PCFloat")
+               | type' == int32Name      -> ([| PCInt32 |],      lookupValueName' "PCInt32")
+               | type' == int64Name      -> ([| PCInt64 |],      lookupValueName' "PCInt64")
+               | type' == word32Name     -> ([| PCWord32 |],     lookupValueName' "PCWord32")
+               | type' == word64Name     -> ([| PCWord64 |],     lookupValueName' "PCWord64")
+               | type' == boolName       -> ([| PCBool |],       lookupValueName' "PCBool")
+               | type' == utf8Name       -> ([| PCUtf8 |],       lookupValueName' "PCUtf8")
+               | type' == byteStringName -> ([| PCByteString |], lookupValueName' "PCByteString")
+               | otherwise -> error $ "handleField: unhandled type ("++show constructors++")"
       constructorName <- constructorName'
 
       let -- update mvar when new measurement comes in
@@ -114,18 +101,11 @@ handleField prefix (name, ConT type') = do
 handleField prefix x@(name, AppT (ConT con) (ConT type')) = do
   (Just maybeName) <- lookupTypeName "Maybe"
   (Just seqName) <- lookupTypeName "P'.Seq"
---  if | con == maybeName -> do reportWarning $ "ignoring optional field \"" ++ prefix ++ nameBase name ++ "\" ("++show type'++")"
---                              return (wildP, [])
---     | con == seqName -> do reportWarning $ "ignoring repeated field \"" ++ prefix ++ nameBase name ++ "\" ("++show type'++")"
---                            return (wildP, [])
---     | otherwise -> error $ "handleField: the \"impossible\" happened in AppT " ++ show x
-  if con == maybeName
-    then do reportWarning $ "ignoring optional field \"" ++ prefix ++ nameBase name ++ "\" ("++show type'++")"
-            return (wildP, [])
-    else if con == seqName
-         then do reportWarning $ "ignoring repeated field \"" ++ prefix ++ nameBase name ++ "\" ("++show type'++")"
-                 return (wildP, [])
-         else error $ "handleField: the \"impossible\" happened in AppT " ++ show x
+  if | con == maybeName -> do reportWarning $ "ignoring optional field \"" ++ prefix ++ nameBase name ++ "\" ("++show type'++")"
+                              return (wildP, [])
+     | con == seqName -> do reportWarning $ "ignoring repeated field \"" ++ prefix ++ nameBase name ++ "\" ("++show type'++")"
+                            return (wildP, [])
+     | otherwise -> error $ "handleField: the \"impossible\" happened in AppT " ++ show x
 handleField _ x = error $ "handleField: the \"impossible\" happened in AppT " ++ show x
 
 

@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# Language OverloadedStrings #-}
 
 module Plotter ( runPlotter ) where
 
@@ -7,6 +8,7 @@ import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.UI.Gtk.OpenGL as GtkGL
 import System.Glib.Signals (on)
+import System.Remote.Monitoring ( forkServer )
 
 import PlotTypes ( GraphInfo(..), PContainer(..), VarInfo(..), clearVarInfo )
 import PlotGL
@@ -16,6 +18,7 @@ data ListViewInfo = ListViewInfo String (C.MVar PContainer) Bool
 
 runPlotter :: [VarInfo] -> [C.ThreadId] -> IO ()
 runPlotter infos backgroundThreadsToKill = do
+  _ <- forkServer "localhost" 8000
   _ <- Gtk.initGUI
  
   -- Initialise the Gtk+ OpenGL extension
@@ -45,11 +48,11 @@ runPlotter infos backgroundThreadsToKill = do
   buttonQuit <- Gtk.buttonNewWithLabel "QUIT"
   _ <- Gtk.onClicked buttonQuit (Gtk.widgetDestroy win)
 
-  buttonClear <- Gtk.buttonNewWithLabel "Clear All Values"
+  buttonClear <- Gtk.buttonNewWithLabel "clear all values"
   _ <- Gtk.onClicked buttonClear $ mapM_ clearVarInfo infos
 
   -- button to create a new graph
-  buttonNewGraph <- Gtk.buttonNewWithLabel "New Graph"
+  buttonNewGraph <- Gtk.buttonNewWithLabel "moar graph"
   _ <- Gtk.onClicked buttonNewGraph (newGraph graphWindowsToBeKilled infos glconfig)
 
   -- vbox to hold buttons
@@ -76,9 +79,9 @@ newGraph graphWindowsToBeKilled infos glconfig = do
 
   -- create a new tree model
   model <- Gtk.listStoreNew $ map (\(VarInfo st pc) -> ListViewInfo st pc False) infos
-  view <- Gtk.treeViewNewWithModel model
+  treeview <- Gtk.treeViewNewWithModel model
 
-  Gtk.treeViewSetHeadersVisible view True
+  Gtk.treeViewSetHeadersVisible treeview True
 
   -- add three columns
   col1 <- Gtk.treeViewColumnNew
@@ -96,8 +99,8 @@ newGraph graphWindowsToBeKilled infos glconfig = do
   Gtk.cellLayoutSetAttributes col1 renderer1 model $ \(ListViewInfo name _ _) -> [ Gtk.cellText := name]
   Gtk.cellLayoutSetAttributes col2 renderer2 model $ \(ListViewInfo _ _ marked) -> [ Gtk.cellToggleActive := marked ]
 
-  _ <- Gtk.treeViewAppendColumn view col1
-  _ <- Gtk.treeViewAppendColumn view col2
+  _ <- Gtk.treeViewAppendColumn treeview col1
+  _ <- Gtk.treeViewAppendColumn treeview col2
 
   -- update the model when the toggle buttons are activated
   graphInfoMVar <- C.newMVar (GraphInfo [])
@@ -131,9 +134,10 @@ newGraph graphWindowsToBeKilled infos glconfig = do
   -- vbox to hold treeview and gl drawing
   hbox <- Gtk.hBoxNew False 4
   _ <- Gtk.set win [ Gtk.containerChild := hbox ]
-  Gtk.set hbox [ Gtk.containerChild := view
+  Gtk.set hbox [ Gtk.containerChild := treeview
                , Gtk.containerChild := canvas
                , Gtk.containerChild := chartCanvas
+               , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]
 
   C.modifyMVar_ graphWindowsToBeKilled (return . (win:))
@@ -144,4 +148,3 @@ newGraph graphWindowsToBeKilled infos glconfig = do
 
 animationWaitTime :: Int
 animationWaitTime = 3
-

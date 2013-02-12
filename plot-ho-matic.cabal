@@ -19,7 +19,7 @@ cabal-version:       >=1.8
 executable plot-ho-matic
   hs-source-dirs:    src
   main-is:           Main.hs
---  other-modules:     DrawAC
+--  other-modules:
   build-depends:     base >= 4.5.0 && < 4.7,
                      protocol-buffers,
                      random,
@@ -29,12 +29,17 @@ executable plot-ho-matic
                      OpenGL,
                      glib,
                      gtk,
-                     gtkglext
---                     ekg
+                     gtkglext,
+                     data-accessor,
+                     Chart,
+                     ekg
+
 --  if os(OSX)
 --    cpp-options:     -DOSX
 --    build-depends:   zeromq3-haskell
 --  else
 --    build-depends:   zeromq-haskell
 --
---  ghc-options:       -O2 -threaded -with-rtsopts=-T
+--  ghc-options:       -O2 -with-rtsopts=-T
+  ghc-prof-options: -O2 -prof -fprof-auto -fprof-cafs -rtsopts
+  other-extensions:        TemplateHaskell

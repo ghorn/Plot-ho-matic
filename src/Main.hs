@@ -2,6 +2,8 @@
 --{-# OPTIONS_GHC -ddump-splices #-}
 {-# Language TemplateHaskell #-}
 
+module Main ( main ) where
+
 import Control.Concurrent ( forkIO, threadDelay )
 
 import Plotter ( runPlotter )

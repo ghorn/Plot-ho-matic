@@ -8,6 +8,9 @@ import qualified Data.Sequence as S
 import qualified Data.ByteString.Lazy as BSL
 import qualified Text.ProtocolBuffers.Header as P'
 
+-- what the graph should draw
+data GraphInfo = GraphInfo [(String, MVar PContainer)]
+
 -- keep this abstract so that we can use a Seq or Vector later
 type ContainerType a = Seq a
 emptyContainer :: ContainerType a

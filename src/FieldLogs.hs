@@ -2,7 +2,7 @@
 {-# Language MultiWayIf #-}
 {-# Language TemplateHaskell #-}
 
-module Quotes where
+module FieldLogs where
 
 import Control.Concurrent ( newMVar, modifyMVar_ )
 import Data.Maybe ( fromMaybe )

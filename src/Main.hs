@@ -4,8 +4,8 @@
 
 import Control.Concurrent ( forkIO, threadDelay )
 
-import PlotterGL
-import Quotes --( f, MyType(..) )
+import Plotter ( runPlotter )
+import FieldLogs
 import PlotTypes
 
 data Xyz = MkXyz { x_ :: Double

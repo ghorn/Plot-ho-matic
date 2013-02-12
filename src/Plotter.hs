@@ -1,28 +1,18 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module PlotterGL where
+module Plotter ( runPlotter ) where
 
 import qualified Control.Concurrent as C
-import Control.Monad ( zipWithM_ )
---import qualified Data.Foldable as F
-import Data.Sequence ( Seq )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.UI.Gtk.OpenGL as GtkGL
-import Graphics.Rendering.OpenGL ( ($=) )
-import qualified Graphics.Rendering.OpenGL as GL
 import System.Glib.Signals (on)
 
- 
-import Colors ( niceColors )
-import DrawLine ( drawLine )
-import PlotTypes ( PContainer(..), VarInfo(..), clearVarInfo, toFrac )
+import PlotTypes ( GraphInfo(..), PContainer(..), VarInfo(..), clearVarInfo )
+import PlotGL
+import PlotChart
 
 data ListViewInfo = ListViewInfo String (C.MVar PContainer) Bool
-
--- what the graph should draw
-data GraphInfo = GraphInfo [(String, C.MVar PContainer)]
-
 
 runPlotter :: [VarInfo] -> [C.ThreadId] -> IO ()
 runPlotter infos backgroundThreadsToKill = do
@@ -126,13 +116,24 @@ newGraph graphWindowsToBeKilled infos glconfig = do
   let displayFun = do
         gi <- C.readMVar graphInfoMVar
         displayGraph gi
-  canvas <- makeGraphCanvas glconfig displayFun
+  canvas <- makeGraphCanvas animationWaitTime glconfig displayFun
+
+
+  -- chart drawing area
+  chartCanvas <- Gtk.drawingAreaNew
+  _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
+  _ <- Gtk.onExpose chartCanvas $ const (updateCanvas graphInfoMVar chartCanvas)
+  _ <- Gtk.timeoutAddFull (do
+      Gtk.widgetQueueDraw chartCanvas
+      return True)
+    Gtk.priorityDefaultIdle animationWaitTime
 
   -- vbox to hold treeview and gl drawing
   hbox <- Gtk.hBoxNew False 4
   _ <- Gtk.set win [ Gtk.containerChild := hbox ]
   Gtk.set hbox [ Gtk.containerChild := view
                , Gtk.containerChild := canvas
+               , Gtk.containerChild := chartCanvas
                ]
 
   C.modifyMVar_ graphWindowsToBeKilled (return . (win:))
@@ -141,70 +142,6 @@ newGraph graphWindowsToBeKilled infos glconfig = do
   
   return ()
 
-
-
-makeGraphCanvas :: GtkGL.GLConfig -> IO () -> IO GtkGL.GLDrawingArea
-makeGraphCanvas glconfig displayFun = do
-  -- Create an OpenGL drawing area widget
-  canvas <- GtkGL.glDrawingAreaNew glconfig
- 
-  _ <- Gtk.widgetSetSizeRequest canvas 250 250
- 
-  -- Initialise some GL setting just before the canvas first gets shown
-  -- (We can't initialise these things earlier since the GL resources that
-  -- we are using wouldn't heve been setup yet)
-  _ <- Gtk.onRealize canvas $ GtkGL.withGLDrawingArea canvas $ \_ -> do
-    GL.clearColor $= (GL.Color4 0.0 0.0 0.0 0.0)
-    GL.matrixMode $= GL.Projection
-    GL.loadIdentity
-    GL.ortho 0.0 1.0 0.0 1.0 (-1.0) 1.0
-    GL.depthFunc $= Just GL.Less
-    GL.drawBuffer $= GL.BackBuffers
- 
-  -- Set the repaint handler
-  _ <- Gtk.onExpose canvas $ \_ -> do
-    GtkGL.withGLDrawingArea canvas $ \glwindow -> do
-      GL.clear [GL.DepthBuffer, GL.ColorBuffer]
-      _ <- displayFun
-      GtkGL.glDrawableSwapBuffers glwindow
-    return True
- 
-  -- Setup the animation
-  _ <- Gtk.timeoutAddFull (do
-      Gtk.widgetQueueDraw canvas
-      return True)
-    Gtk.priorityDefaultIdle animationWaitTime
-
-  return canvas
-
- 
 animationWaitTime :: Int
 animationWaitTime = 3
 
-
--- Draw the OpenGL polygon.
-displayGraph :: GraphInfo -> IO ()
-displayGraph (GraphInfo gis) = do
---  let printLog = mapM_ printVarInfo infos
---  printLog
-  GL.loadIdentity
-  GL.color (GL.Color3 1 1 1 :: GL.Color3 GL.GLfloat)
-  let f (name,mv) = do
-        pc <- C.readMVar mv
-        return (name,toFrac pc :: Seq GL.GLfloat)
-  namePc <- mapM f gis
-  
---  let getMax seq' = F.foldl' max (-1e100) seq'
---      getMin seq' = F.foldl' min (1e100) seq'
---
---      max' = maximum $ 1e100 : map (getMax . snd) namePc
---      min' = minimum $ -1e100 : map (getMin . snd) namePc
---  
---  GL.matrixMode $= GL.Projection
---  GL.loadIdentity
---  GL.ortho 0.0 1.0 min' max' (-1.0) 1.0
-    
-  let drawOne (_,pc) (cr,cg,cb) = do
-        GL.color (GL.Color3 cr cg cb)
-        drawLine pc
-  zipWithM_ drawOne namePc niceColors

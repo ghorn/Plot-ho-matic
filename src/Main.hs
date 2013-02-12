@@ -28,7 +28,7 @@ updateLoop :: Int -> Axyz -> (Axyz -> IO ()) -> IO ()
 updateLoop n anAxyz' receiveNewMessage = do
   receiveNewMessage anAxyz'
 --  putStrLn $ "update " ++ show n
-  threadDelay 100000
+  threadDelay 50000
   updateLoop (n+1::Int) (increment anAxyz') receiveNewMessage
 
 main :: IO ()

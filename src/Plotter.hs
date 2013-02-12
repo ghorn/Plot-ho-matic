@@ -6,12 +6,10 @@ module Plotter ( runPlotter ) where
 import qualified Control.Concurrent as C
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
-import qualified Graphics.UI.Gtk.OpenGL as GtkGL
-import System.Glib.Signals (on)
+import System.Glib.Signals ( on )
 import System.Remote.Monitoring ( forkServer )
 
 import PlotTypes ( GraphInfo(..), PContainer(..), VarInfo(..), clearVarInfo )
-import PlotGL
 import PlotChart
 
 data ListViewInfo = ListViewInfo String (C.MVar PContainer) Bool
@@ -21,16 +19,6 @@ runPlotter infos backgroundThreadsToKill = do
   _ <- forkServer "localhost" 8000
   _ <- Gtk.initGUI
  
-  -- Initialise the Gtk+ OpenGL extension
-  -- (including reading various command line parameters)
-  _ <- GtkGL.initGL
- 
-  -- We need a OpenGL frame buffer configuration to be able to create other
-  -- OpenGL objects.
-  glconfig <- GtkGL.glConfigNew [GtkGL.GLModeRGBA,
-                                 GtkGL.GLModeDepth,
-                                 GtkGL.GLModeDouble]
-
   -- start the main window
   win <- Gtk.windowNew
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
@@ -53,7 +41,7 @@ runPlotter infos backgroundThreadsToKill = do
 
   -- button to create a new graph
   buttonNewGraph <- Gtk.buttonNewWithLabel "moar graph"
-  _ <- Gtk.onClicked buttonNewGraph (newGraph graphWindowsToBeKilled infos glconfig)
+  _ <- Gtk.onClicked buttonNewGraph (newGraph graphWindowsToBeKilled infos)
 
   -- vbox to hold buttons
   vbox <- Gtk.vBoxNew False 4
@@ -70,8 +58,8 @@ runPlotter infos backgroundThreadsToKill = do
 
 
 -- make a new graph window
-newGraph :: C.MVar [Gtk.Window] -> [VarInfo] -> GtkGL.GLConfig -> IO ()
-newGraph graphWindowsToBeKilled infos glconfig = do
+newGraph :: C.MVar [Gtk.Window] -> [VarInfo] -> IO ()
+newGraph graphWindowsToBeKilled infos = do
   win <- Gtk.windowNew
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
                    , Gtk.windowTitle := "I am a graph"
@@ -116,12 +104,6 @@ newGraph graphWindowsToBeKilled infos glconfig = do
     _ <- C.swapMVar graphInfoMVar newGraphInfo
     return ()
 
-  let displayFun = do
-        gi <- C.readMVar graphInfoMVar
-        displayGraph gi
-  canvas <- makeGraphCanvas animationWaitTime glconfig displayFun
-
-
   -- chart drawing area
   chartCanvas <- Gtk.drawingAreaNew
   _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
@@ -135,7 +117,6 @@ newGraph graphWindowsToBeKilled infos glconfig = do
   hbox <- Gtk.hBoxNew False 4
   _ <- Gtk.set win [ Gtk.containerChild := hbox ]
   Gtk.set hbox [ Gtk.containerChild := treeview
-               , Gtk.containerChild := canvas
                , Gtk.containerChild := chartCanvas
                , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]

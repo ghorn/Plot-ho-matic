@@ -3,14 +3,11 @@
 module PlotChart ( newChartCanvas, updateCanvas ) where
 
 import qualified Control.Concurrent as C
+import Data.Accessor
 import qualified Data.Foldable as F
 import Data.Sequence ( Seq )
 import qualified Graphics.UI.Gtk as Gtk
---import qualified Graphics.Rendering.Chart as Chart
-
 import qualified Graphics.Rendering.Chart as Chart
---import Graphics.Rendering.Chart.Gtk
-import Data.Accessor
  
 import PlotTypes ( GraphInfo(..), toFrac )
 
@@ -38,7 +35,7 @@ updateCanvas graphInfoMVar canvas = do
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
   win <- Gtk.widgetGetDrawWindow canvas
-  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart namePcs) sz) Chart.bitmapEnv
+  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart namePcs) sz) Chart.vectorEnv
   return True
 
 displayChart :: (F.Foldable t, Chart.PlotValue y0) => [(String, t y0)] -> Chart.Renderable ()

@@ -40,6 +40,6 @@ executable plot-ho-matic
 --  else
 --    build-depends:   zeromq-haskell
 --
---  ghc-options:       -O2 -with-rtsopts=-T
-  ghc-prof-options: -O2 -prof -fprof-auto -fprof-cafs -rtsopts
+  ghc-options:      -O2 -with-rtsopts=-T
+  ghc-prof-options: -O2 -with-rtsopts=-T -prof -fprof-auto -fprof-cafs -rtsopts
   other-extensions:        TemplateHaskell

@@ -1,8 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ExistentialQuantification #-}
 
-module PlotTypes ( GraphInfo(..)
-                 , Channel(..)
+module PlotTypes ( Channel(..)
                  , PbPrim(..)
                  , pbpToFrac
                  ) where
@@ -11,9 +10,6 @@ import Control.Concurrent ( MVar )
 import Data.Sequence ( Seq )
 import qualified Data.ByteString.Lazy as BSL
 import qualified Text.ProtocolBuffers.Header as P'
-
--- what the graph should draw
-data GraphInfo a = GraphInfo (MVar (Seq a)) (MVar Int) [(String, a -> PbPrim)]
 
 data Channel = forall a. Channel { chanName :: String
                                  , chanGetters :: [(String, a -> PbPrim)]

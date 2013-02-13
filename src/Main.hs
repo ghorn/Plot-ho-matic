@@ -67,9 +67,6 @@ main = do
   serverTid0 <- CC.forkIO $ serverLoop chan0 (receiveNewMessage maxNumMV0 seqmv0)
   serverTid1 <- CC.forkIO $ serverLoop chan1 (receiveNewMessage maxNumMV1 seqmv1)
 
---  (receiveNewMessage, infos) <- $(setupTelem "position" ''Axyz)
---  serverTid <- CC.forkIO $ serverLoop chan receiveNewMessage
-
   let accessors0 = $(makeAccessors "positionPlus" ''Axyz)
       accessors1 = $(makeAccessors "position" ''Xyz)
 

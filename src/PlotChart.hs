@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module PlotChart ( newChartCanvas, updateCanvas ) where
+module PlotChart ( GraphInfo(..), newChartCanvas, updateCanvas ) where
 
 import qualified Control.Concurrent as CC
 import Data.Accessor
@@ -11,8 +11,10 @@ import qualified Data.Sequence as S
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
  
-import PlotTypes ( GraphInfo(..), pbpToFrac )
+import PlotTypes ( PbPrim, pbpToFrac )
 
+-- what the graph should draw
+data GraphInfo a = GraphInfo (CC.MVar (S.Seq a)) (CC.MVar Int) [(String, a -> PbPrim)]
 
 newChartCanvas :: CC.MVar (GraphInfo a) -> Int -> IO Gtk.DrawingArea
 newChartCanvas graphInfoMVar animationWaitTime = do

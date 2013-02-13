@@ -30,13 +30,13 @@ data PbPrim = PbDouble Double
 --            | PbByteString P'.ByteString
             | PbByteString BSL.ByteString
 
-pbpToFrac :: Fractional a => PbPrim -> a
-pbpToFrac (PbDouble c)     = realToFrac c
-pbpToFrac (PbFloat c)      = realToFrac c
-pbpToFrac (PbInt32 c)      = realToFrac c
-pbpToFrac (PbInt64 c)      = realToFrac c
-pbpToFrac (PbWord32 c)     = realToFrac c
-pbpToFrac (PbWord64 c)     = realToFrac c
-pbpToFrac (PbBool c)       = (\x -> if x then 1 else 0) c
---pbpToFrac (PbUtf8 _)       = Nothing
---pbpToFrac (PbByteString _) = Nothing
+pbpToFrac :: Fractional a => PbPrim -> Maybe a
+pbpToFrac (PbDouble c)     = Just $ realToFrac c
+pbpToFrac (PbFloat c)      = Just $ realToFrac c
+pbpToFrac (PbInt32 c)      = Just $ realToFrac c
+pbpToFrac (PbInt64 c)      = Just $ realToFrac c
+pbpToFrac (PbWord32 c)     = Just $ realToFrac c
+pbpToFrac (PbWord64 c)     = Just $ realToFrac c
+pbpToFrac (PbBool c)       = Just $ (\x -> if x then 1 else 0) c
+pbpToFrac (PbUtf8 _)       = Nothing
+pbpToFrac (PbByteString _) = Nothing

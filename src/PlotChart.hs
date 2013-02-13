@@ -5,6 +5,7 @@ module PlotChart ( newChartCanvas, updateCanvas ) where
 import qualified Control.Concurrent as CC
 import Data.Accessor
 import qualified Data.Foldable as F
+import Data.Maybe ( mapMaybe )
 import Data.Sequence ( Seq )
 import qualified Data.Sequence as S
 import qualified Graphics.UI.Gtk as Gtk
@@ -32,7 +33,7 @@ updateCanvas graphInfoMVar canvas = do
   numToDraw <- CC.readMVar numToDraw'
   logSeq <- CC.readMVar logSeq'
   let shortLog = S.drop (S.length logSeq - numToDraw) logSeq
-      f (name,getter) = (name,fmap (pbpToFrac . getter) shortLog :: Seq Double)
+      f (name,getter) = (name,fmap (pbpToFrac . getter) shortLog :: Seq (Maybe Double))
       namePcs = map f getters
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
@@ -40,11 +41,13 @@ updateCanvas graphInfoMVar canvas = do
   _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart namePcs) sz) Chart.vectorEnv
   return True
 
-displayChart :: (F.Foldable t, Chart.PlotValue a) => [(String, t a)] -> Chart.Renderable ()
+displayChart :: (F.Foldable t, Chart.PlotValue a) => [(String, t (Maybe a))] -> Chart.Renderable ()
 displayChart namePcs = Chart.toRenderable layout
   where
+    f (_, Nothing) = Nothing
+    f (k, Just x)  = Just (k,x)
     drawOne (name,pc) col
-      = Chart.plot_lines_values ^= [zip [(0::Int)..] (F.toList pc)]
+      = Chart.plot_lines_values ^= [mapMaybe f $ zip [(0::Int)..] (F.toList pc)]
         $ Chart.plot_lines_style  .> Chart.line_color ^= col
 --        $ Chart.plot_points_style ^= Chart.filledCircles 2 red
         $ Chart.plot_lines_title ^= name

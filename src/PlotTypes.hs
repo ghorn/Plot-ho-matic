@@ -14,6 +14,7 @@ import qualified Text.ProtocolBuffers.Header as P'
 data Channel = forall a. Channel { chanName :: String
                                  , chanGetters :: [(String, a -> PbPrim)]
                                  , chanSeq :: MVar (Seq a)
+--                                 , chanSeq :: MVar (Seq (Double,a))
                                  , chanMaxNum :: MVar Int
                                  }
 

@@ -24,6 +24,33 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
                    , Gtk.windowTitle := "I am a graph"
                    ]
 
+  -- which one is the x axis?
+  xaxisSelector <- Gtk.comboBoxNewText
+  mapM_ (Gtk.comboBoxAppendText xaxisSelector . fst) changetters
+  Gtk.comboBoxSetActive xaxisSelector 0
+
+  label <- Gtk.labelNew (Just "x axis:")
+  xaxisBox <- Gtk.hBoxNew False 4
+  Gtk.set xaxisBox [ Gtk.containerChild := label
+                   , Gtk.containerChild := xaxisSelector
+                   , Gtk.boxChildPacking label := Gtk.PackNatural
+--                   , Gtk.boxChildPacking xaxisSelector := Gtk.PackNatural
+                   ]
+
+  -- update which one is the x axis
+  numToDrawMv <- CC.newMVar 100
+  graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv (head changetters) [])
+  
+  let updateXAxis = do
+        k <- Gtk.comboBoxGetActive xaxisSelector
+        _ <- CC.modifyMVar_ graphInfoMVar $
+             \(GraphInfo a b _ d) -> return (GraphInfo a b (changetters !! k) d)
+        return ()
+  updateXAxis
+  _ <- on xaxisSelector Gtk.changed updateXAxis
+
+
+
   -- create a new tree model
   let lviInit (name,getter) =
         ListViewInfo { lviName = name
@@ -36,7 +63,7 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
 
   Gtk.treeViewSetHeadersVisible treeview True
 
-  -- add three columns
+  -- add some columns
   col1 <- Gtk.treeViewColumnNew
   col2 <- Gtk.treeViewColumnNew
 
@@ -55,20 +82,23 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
   _ <- Gtk.treeViewAppendColumn treeview col1
   _ <- Gtk.treeViewAppendColumn treeview col2
 
-  -- update the model when the toggle buttons are activated
-  numToDrawMv <- CC.newMVar 100
-  graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv [])
+  
+  let -- update the graph information
+      updateGraphInfo = do
+        lvis <- Gtk.listStoreToList model
+        let swapGraphInfo (GraphInfo _ _ xaxisget _) = GraphInfo chanseq numToDrawMv xaxisget [(lviName lvi, lviGetter lvi) | lvi <- lvis, lviMarked lvi]
+            
+        _ <- CC.modifyMVar_ graphInfoMVar (return . swapGraphInfo)
+        return ()
+  
+  -- update which y axes are visible
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     -- toggle the check mark
     let (i:_) = Gtk.stringToTreePath pathStr
     lvi0 <- Gtk.listStoreGetValue model i
     Gtk.listStoreSetValue model i (lvi0 {lviMarked = not (lviMarked lvi0)})
+    updateGraphInfo
 
-    -- update the graph information
-    lvis <- Gtk.listStoreToList model
-    let newGraphInfo = GraphInfo chanseq numToDrawMv [(lviName lvi, lviGetter lvi) | lvi <- lvis, lviMarked lvi]
-    _ <- CC.swapMVar graphInfoMVar newGraphInfo
-    return ()
 
   -- chart drawing area
   chartCanvas <- Gtk.drawingAreaNew
@@ -79,13 +109,21 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
       return True)
     Gtk.priorityDefaultIdle animationWaitTime
 
-  -- vbox to hold treeview and gl drawing
-  hbox <- Gtk.hBoxNew False 4
-  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
-  Gtk.set hbox [ Gtk.containerChild := treeview
-               , Gtk.containerChild := chartCanvas
-               , Gtk.boxChildPacking treeview := Gtk.PackNatural
+  -- vbox to hold x axis selector and treeview
+  vbox <- Gtk.vBoxNew False 4
+  Gtk.set vbox [ Gtk.containerChild := xaxisBox
+               , Gtk.containerChild := treeview
+               , Gtk.boxChildPacking xaxisBox := Gtk.PackNatural
+--               , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]
+
+  -- hbox to hold treeview and gl drawing
+  hbox <- Gtk.hBoxNew False 4
+  Gtk.set hbox [ Gtk.containerChild := vbox
+               , Gtk.containerChild := chartCanvas
+               , Gtk.boxChildPacking vbox := Gtk.PackNatural
+               ]
+  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
 
   Gtk.widgetShowAll win
   return win

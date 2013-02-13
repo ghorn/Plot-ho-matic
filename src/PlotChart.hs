@@ -14,7 +14,7 @@ import qualified Graphics.Rendering.Chart as Chart
 import PlotTypes ( PbPrim, pbpToFrac )
 
 -- what the graph should draw
-data GraphInfo a = GraphInfo (CC.MVar (S.Seq a)) (CC.MVar Int) [(String, a -> PbPrim)]
+data GraphInfo a = GraphInfo (CC.MVar (S.Seq a)) (CC.MVar Int) (String, a -> PbPrim) [(String, a -> PbPrim)]
 
 newChartCanvas :: CC.MVar (GraphInfo a) -> Int -> IO Gtk.DrawingArea
 newChartCanvas graphInfoMVar animationWaitTime = do
@@ -31,25 +31,26 @@ newChartCanvas graphInfoMVar animationWaitTime = do
 
 updateCanvas :: CC.MVar (GraphInfo a) -> Gtk.DrawingArea  -> IO Bool
 updateCanvas graphInfoMVar canvas = do
-  (GraphInfo logSeq' numToDraw' getters) <- CC.readMVar graphInfoMVar
+  (GraphInfo logSeq' numToDraw' getXAxis getters) <- CC.readMVar graphInfoMVar
   numToDraw <- CC.readMVar numToDraw'
   logSeq <- CC.readMVar logSeq'
   let shortLog = S.drop (S.length logSeq - numToDraw) logSeq
       f (name,getter) = (name,fmap (pbpToFrac . getter) shortLog :: Seq (Maybe Double))
       namePcs = map f getters
+      xaxis = f getXAxis
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
   win <- Gtk.widgetGetDrawWindow canvas
-  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart namePcs) sz) Chart.vectorEnv
+  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart xaxis namePcs) sz) Chart.vectorEnv
   return True
 
-displayChart :: (F.Foldable t, Chart.PlotValue a) => [(String, t (Maybe a))] -> Chart.Renderable ()
-displayChart namePcs = Chart.toRenderable layout
+displayChart :: (F.Foldable t, Chart.PlotValue a) => (String, t (Maybe a)) -> [(String, t (Maybe a))] -> Chart.Renderable ()
+displayChart xaxis namePcs = Chart.toRenderable layout
   where
-    f (_, Nothing) = Nothing
-    f (k, Just x)  = Just (k,x)
+    f (Just x, Just y)  = Just (x,y)
+    f _ = Nothing
     drawOne (name,pc) col
-      = Chart.plot_lines_values ^= [mapMaybe f $ zip [(0::Int)..] (F.toList pc)]
+      = Chart.plot_lines_values ^= [mapMaybe f $ zip (F.toList (snd xaxis)) (F.toList pc)]
         $ Chart.plot_lines_style  .> Chart.line_color ^= col
 --        $ Chart.plot_points_style ^= Chart.filledCircles 2 red
         $ Chart.plot_lines_title ^= name
@@ -57,4 +58,5 @@ displayChart namePcs = Chart.toRenderable layout
     allLines = zipWith drawOne namePcs Chart.defaultColorSeq
     layout = Chart.layout1_title ^= "Wooo"
              $ Chart.layout1_plots ^= map (Left . Chart.toPlot) allLines
+             $ Chart.layout1_bottom_axis .> Chart.laxis_title ^= fst xaxis
              $ Chart.defaultLayout1

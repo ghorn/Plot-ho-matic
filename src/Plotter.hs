@@ -34,10 +34,6 @@ runPlotter channels backgroundThreadsToKill = do
   _ <- Gtk.onDestroy win killEverything
 
   --------------- main widget -----------------
-  -- button to quit
-  buttonQuit <- Gtk.buttonNewWithLabel "QUIT"
-  _ <- Gtk.onClicked buttonQuit (Gtk.widgetDestroy win)
-
   -- button to clear channels
   buttonClear <- Gtk.buttonNewWithLabel "clear all values"
   _ <- Gtk.onClicked buttonClear $ putStrLn "you pressed \"clear\"" -- mapM_ clearVarInfo infos
@@ -47,8 +43,7 @@ runPlotter channels backgroundThreadsToKill = do
 
   -- vbox to hold buttons
   vbox <- Gtk.vBoxNew False 4
-  Gtk.set vbox [ Gtk.containerChild := buttonQuit
-               , Gtk.containerChild := buttonClear
+  Gtk.set vbox [ Gtk.containerChild := buttonClear
                , Gtk.containerChild := chanWidget
                ]
 

@@ -2,17 +2,18 @@
 
 module PlotChart ( newChartCanvas, updateCanvas ) where
 
-import qualified Control.Concurrent as C
+import qualified Control.Concurrent as CC
 import Data.Accessor
 import qualified Data.Foldable as F
 import Data.Sequence ( Seq )
+import qualified Data.Sequence as S
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
  
-import PlotTypes ( GraphInfo(..), toFrac )
+import PlotTypes ( GraphInfo(..), pbpToFrac )
 
 
-newChartCanvas :: C.MVar GraphInfo -> Int -> IO Gtk.DrawingArea
+newChartCanvas :: CC.MVar (GraphInfo a) -> Int -> IO Gtk.DrawingArea
 newChartCanvas graphInfoMVar animationWaitTime = do
   -- chart drawing area
   chartCanvas <- Gtk.drawingAreaNew
@@ -25,20 +26,21 @@ newChartCanvas graphInfoMVar animationWaitTime = do
   return chartCanvas
 
 
-updateCanvas :: C.MVar GraphInfo -> Gtk.DrawingArea  -> IO Bool
+updateCanvas :: CC.MVar (GraphInfo a) -> Gtk.DrawingArea  -> IO Bool
 updateCanvas graphInfoMVar canvas = do
-  (GraphInfo gis) <- C.readMVar graphInfoMVar
-  let f (name,mv) = do
-        pc <- C.readMVar mv
-        return (name,toFrac pc :: Seq Double)
-  namePcs <- mapM f gis
+  (GraphInfo logSeq' numToDraw' getters) <- CC.readMVar graphInfoMVar
+  numToDraw <- CC.readMVar numToDraw'
+  logSeq <- CC.readMVar logSeq'
+  let shortLog = S.drop (S.length logSeq - numToDraw) logSeq
+      f (name,getter) = (name,fmap (pbpToFrac . getter) shortLog :: Seq Double)
+      namePcs = map f getters
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
   win <- Gtk.widgetGetDrawWindow canvas
   _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart namePcs) sz) Chart.vectorEnv
   return True
 
-displayChart :: (F.Foldable t, Chart.PlotValue y0) => [(String, t y0)] -> Chart.Renderable ()
+displayChart :: (F.Foldable t, Chart.PlotValue a) => [(String, t a)] -> Chart.Renderable ()
 displayChart namePcs = Chart.toRenderable layout
   where
     drawOne (name,pc) col

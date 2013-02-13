@@ -2,21 +2,21 @@
 {-# Language MultiWayIf #-}
 {-# Language TemplateHaskell #-}
 
-module FieldLogs where
+module Accessors where
 
-import Control.Concurrent ( newMVar, modifyMVar_ )
 import Data.Maybe ( fromMaybe )
 import Language.Haskell.TH
 
 import PlotTypes
 
+class FieldInfos a where
+  getFieldInfos :: a -> [(String, a -> PbPrim)]
+
 data Output = Output { outputString :: String
-                     , outputNewMvStmt :: StmtQ
-                     , outputUpdateStmt :: StmtQ
-                     , outputContainerExp :: ExpQ
+                     , outputVar :: ExpQ
                      }
 instance Show Output where
-  show (Output str _ _ _) = "Output " ++ show str
+  show (Output str _) = "Output " ++ show str
 
 -- | take a constructor field and return usable stuff
 handleField :: String -> (Name, Type) -> Q (PatQ, [Output])
@@ -42,9 +42,7 @@ handleField prefix (name, ConT type') = do
     -- everything else
     _ -> do
       -- make the mvar name and pattern name
-      mn <- newName ("m_" ++ nameBase name)
-      patternName <- newName (nameBase name)
-      let pattern = varP patternName
+      patternName <- newName ("_" ++ nameBase name)
 
       -- lookup some type names
 --      reportWarning $ "============= dataName: " ++ show dataName
@@ -63,39 +61,27 @@ handleField prefix (name, ConT type') = do
       utf8Name <- lookupTypeName' "P'.Utf8"
       byteStringName <- lookupTypeName' "P'.ByteString"
 
-      containerPatName <- newName ("append_" ++ nameBase name)
       let lookupValueName' :: String -> Q Name
           lookupValueName' str = fmap (fromMaybe (error msg')) (lookupValueName str)
             where
               msg' = "can't lookup \""++show type'++"\" with lookupValueName \""++str++"\""
-      let -- container variable
-          (constructorExp,constructorName') =
-            if | type' == doubleName     -> ([| PCDouble |],     lookupValueName' "PCDouble")
-               | type' == floatName      -> ([| PCFloat |],      lookupValueName' "PCFloat")
-               | type' == int32Name      -> ([| PCInt32 |],      lookupValueName' "PCInt32")
-               | type' == int64Name      -> ([| PCInt64 |],      lookupValueName' "PCInt64")
-               | type' == word32Name     -> ([| PCWord32 |],     lookupValueName' "PCWord32")
-               | type' == word64Name     -> ([| PCWord64 |],     lookupValueName' "PCWord64")
-               | type' == boolName       -> ([| PCBool |],       lookupValueName' "PCBool")
-               | type' == utf8Name       -> ([| PCUtf8 |],       lookupValueName' "PCUtf8")
-               | type' == byteStringName -> ([| PCByteString |], lookupValueName' "PCByteString")
-               | otherwise -> error $ "handleField: unhandled type ("++show constructors++")"
-      constructorName <- constructorName'
 
-      let -- update mvar when new measurement comes in
-          modify = lam1E (conP constructorName [varP containerPatName]) [| return $ $(conE constructorName) $ appendContainer $(varE patternName) $(varE containerPatName) |]
-          updatemvStmt = noBindS [| modifyMVar_ $(varE mn) $(modify) |]
+          -- container variable
+          (con,constructorName') =
+            if | type' == doubleName     -> ([| PbDouble |],     lookupValueName' "PCDouble")
+               | type' == floatName      -> ([| PbFloat |],      lookupValueName' "PCFloat")
+               | type' == int32Name      -> ([| PbInt32 |],      lookupValueName' "PCInt32")
+               | type' == int64Name      -> ([| PbInt64 |],      lookupValueName' "PCInt64")
+               | type' == word32Name     -> ([| PbWord32 |],     lookupValueName' "PCWord32")
+               | type' == word64Name     -> ([| PbWord64 |],     lookupValueName' "PCWord64")
+               | type' == boolName       -> ([| PbBool |],       lookupValueName' "PCBool")
+               | type' == utf8Name       -> ([| PbUtf8 |],       lookupValueName' "PCUtf8")
+               | type' == byteStringName -> ([| PbByteString |], lookupValueName' "PCByteString")
+               | otherwise -> error $ "handleField: unhandled type ("++show constructors++")"
 
           -- human readable name
           stringName = prefix ++ nameBase name
-
-          -- create a new mvar
-          mkmvarStmt = bindS (varP mn) [| newMVar ($(constructorExp) emptyContainer) |]
-
-          -- container variable
-          containerExp = varE mn
-
-      return (pattern, [Output stringName mkmvarStmt updatemvStmt containerExp])
+      return (varP patternName, [Output stringName [| $(con) $(varE patternName) |] ])
 
 -- handle optional fields
 handleField prefix x@(name, AppT (ConT con) (ConT type')) = do
@@ -130,8 +116,9 @@ handleConstructor prefix (RecC conName varStrictTypes) = do
   return (conPattern, cOutputs)
 handleConstructor _ x = fail $ "\"" ++ show x ++ "\" is not a record syntax constructor"
 
-setupTelem :: String -> Name -> Q Exp
-setupTelem prefix typ = do
+
+makeAccessors :: String -> Name -> Q Exp
+makeAccessors prefix typ = do
   -- get the type info
   let safeGetInfo :: Q Info
       safeGetInfo = do
@@ -146,18 +133,13 @@ setupTelem prefix typ = do
   -- get the pattern and the names in a nice list of outputs
   (pattern, outputs) <- handleConstructor (prefix ++ ".") constructor
 
-  -- split the outputs
-  let outStrings = map outputString outputs
-  let makeMVars = map outputNewMvStmt outputs
-  let updateMVars = map outputUpdateStmt outputs
-  let containers = map outputContainerExp outputs
-
-  -- define the function to take new data and update the MVars
-  updateFunName <- newName ("update_" ++ nameBase _typeName)
-  let defUpdate = letS [funD updateFunName [clause [pattern] (normalB (doE updateMVars)) []]]
-
-  -- define the return (...)
-  let retStuff = [| return ( $(varE updateFunName)
-                           , zipWith VarInfo outStrings $(listE containers)
-                           ) |]
-  doE $ makeMVars ++ [defUpdate, noBindS retStuff]
+  let mkFieldAccessor out = [| (outStr, $(lam1E pattern outVar)) |]
+        where
+          outStr = outputString out
+          outVar = outputVar out
+--  let mkGroupAccessor out = [| (outStr, $outVar) |]
+--        where
+--          outStr = outputString out
+--          outVar = outputVar out
+--      groupAccessor = lam1E pattern
+  listE (map mkFieldAccessor outputs)

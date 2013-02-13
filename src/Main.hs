@@ -58,8 +58,8 @@ main = do
   producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (MkXyz 1 2 3)-- 4)
   producerTid1 <- CC.forkIO $ runProducer 60000 incrementXyz chan1 $ MkXyz 0 2 3
 
-  maxNumMV0 <- CC.newMVar (100 :: Int)
-  maxNumMV1 <- CC.newMVar (100 :: Int)
+  maxNumMV0 <- CC.newMVar (10000 :: Int)
+  maxNumMV1 <- CC.newMVar (10000 :: Int)
   
   seqmv0 <- CC.newMVar S.empty
   seqmv1 <- CC.newMVar S.empty

@@ -6,6 +6,7 @@ import qualified Control.Concurrent as CC
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
+import Text.Read ( readMaybe )
 
 import PlotTypes ( Channel(..), PbPrim )
 import PlotChart ( GraphInfo(..), updateCanvas)
@@ -20,25 +21,56 @@ data ListViewInfo a = ListViewInfo { lviName :: String
 newGraph :: Int -> Channel -> IO Gtk.Window
 newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
+  numToDrawMv <- CC.newMVar 0 -- changed immediately
+
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
                    , Gtk.windowTitle := "I am a graph"
                    ]
+
+  -- how many to show?
+  plotLength <- Gtk.entryNew
+  plotLengthLabel <- Gtk.labelNew (Just "range:")
+  plotLengthBox <- Gtk.hBoxNew False 4
+  Gtk.set plotLengthBox [ Gtk.containerChild := plotLengthLabel
+                        , Gtk.containerChild := plotLength
+                        , Gtk.boxChildPacking plotLengthLabel := Gtk.PackNatural
+--                        , Gtk.boxChildPacking plotLength := Gtk.PackNatural
+                        ]
+  
+  Gtk.set plotLength [Gtk.entryText := "100"]
+  let updatePlotLength = do
+        len <- Gtk.get plotLength Gtk.entryText
+        case readMaybe len of
+          Nothing -> do
+            putStrLn $ "invalid non-integer range entry: " ++ len
+            k' <- CC.readMVar numToDrawMv
+            Gtk.set plotLength [Gtk.entryText := show k']
+          Just k -> if (k < 0)
+                    then do
+                      putStrLn $ "invalid negative range entry: " ++ len
+                      k' <- CC.readMVar numToDrawMv
+                      Gtk.set plotLength [Gtk.entryText := show k']
+                      return ()
+                    else do
+                      _ <- CC.swapMVar numToDrawMv k
+                      return ()
+  updatePlotLength
+  _ <- on plotLength Gtk.entryActivate updatePlotLength
 
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
   mapM_ (Gtk.comboBoxAppendText xaxisSelector . fst) changetters
   Gtk.comboBoxSetActive xaxisSelector 0
 
-  label <- Gtk.labelNew (Just "x axis:")
+  xaxisLabel <- Gtk.labelNew (Just "x axis:")
   xaxisBox <- Gtk.hBoxNew False 4
-  Gtk.set xaxisBox [ Gtk.containerChild := label
+  Gtk.set xaxisBox [ Gtk.containerChild := xaxisLabel
                    , Gtk.containerChild := xaxisSelector
-                   , Gtk.boxChildPacking label := Gtk.PackNatural
+                   , Gtk.boxChildPacking xaxisLabel := Gtk.PackNatural
 --                   , Gtk.boxChildPacking xaxisSelector := Gtk.PackNatural
                    ]
 
   -- update which one is the x axis
-  numToDrawMv <- CC.newMVar 100
   graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv (head changetters) [])
   
   let updateXAxis = do
@@ -111,8 +143,10 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
 
   -- vbox to hold x axis selector and treeview
   vbox <- Gtk.vBoxNew False 4
-  Gtk.set vbox [ Gtk.containerChild := xaxisBox
+  Gtk.set vbox [ Gtk.containerChild := plotLengthBox
+               , Gtk.containerChild := xaxisBox
                , Gtk.containerChild := treeview
+               , Gtk.boxChildPacking plotLengthBox := Gtk.PackNatural
                , Gtk.boxChildPacking xaxisBox := Gtk.PackNatural
 --               , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]

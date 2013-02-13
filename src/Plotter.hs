@@ -34,12 +34,12 @@ runPlotter channels backgroundThreadsToKill = do
   _ <- Gtk.onDestroy win killEverything
 
   --------------- main widget -----------------
-  -- button to clear channels
-  buttonClear <- Gtk.buttonNewWithLabel "clear all values"
-  _ <- Gtk.onClicked buttonClear $ putStrLn "you pressed \"clear\"" -- mapM_ clearVarInfo infos
+  -- so i don't forget how to do this:
+  buttonClear <- Gtk.buttonNewWithLabel "this does nothing"
+  _ <- Gtk.onClicked buttonClear $ putStrLn "I swear, it doesn't do anything"
 
   -- list of channels
-  chanWidget <- channelWidget channels graphWindowsToBeKilled
+  chanWidget <- newChannelWidget channels graphWindowsToBeKilled
 
   -- vbox to hold buttons
   vbox <- Gtk.vBoxNew False 4
@@ -54,8 +54,8 @@ runPlotter channels backgroundThreadsToKill = do
 
 
 -- the list of channels
-channelWidget :: [Channel] -> CC.MVar [Gtk.Window] -> IO Gtk.TreeView
-channelWidget channels graphWindowsToBeKilled = do
+newChannelWidget :: [Channel] -> CC.MVar [Gtk.Window] -> IO Gtk.TreeView
+newChannelWidget channels graphWindowsToBeKilled = do
   -- create a new tree model
   model <- Gtk.listStoreNew channels
   treeview <- Gtk.treeViewNewWithModel model

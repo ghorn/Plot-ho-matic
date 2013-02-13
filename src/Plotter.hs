@@ -11,15 +11,60 @@ import PlotTypes ( Channel(..), PbPrim, GraphInfo(..) )
 import PlotChart
 
 data ListViewInfo a = ListViewInfo { lviName :: String
---                                   , lviContainer :: CC.MVar PContainer
                                    , lviGetter :: a -> PbPrim
                                    , lviMarked :: Bool
                                    , lviMaxToShow :: Int
                                    }
 
 
-runPlotter :: Channel a -> [CC.ThreadId] -> IO ()
-runPlotter channel backgroundThreadsToKill = do
+channelWidget :: [Channel] -> CC.MVar [Gtk.Window] -> IO Gtk.TreeView
+channelWidget channels graphWindowsToBeKilled = do
+  -- create a new tree model
+  model <- Gtk.listStoreNew channels
+  treeview <- Gtk.treeViewNewWithModel model
+
+  Gtk.treeViewSetHeadersVisible treeview True
+
+  -- add some columns
+  col0 <- Gtk.treeViewColumnNew
+  col1 <- Gtk.treeViewColumnNew
+  col2 <- Gtk.treeViewColumnNew
+
+  Gtk.treeViewColumnSetTitle col0 "channel"
+  Gtk.treeViewColumnSetTitle col1 "history"
+  Gtk.treeViewColumnSetTitle col2 "new"
+
+  renderer0 <- Gtk.cellRendererTextNew
+  renderer1 <- Gtk.cellRendererTextNew
+  renderer2 <- Gtk.cellRendererToggleNew
+
+  Gtk.cellLayoutPackStart col0 renderer0 True
+  Gtk.cellLayoutPackStart col1 renderer1 True
+  Gtk.cellLayoutPackStart col2 renderer2 True
+
+  Gtk.cellLayoutSetAttributes col0 renderer0 model $ \chan -> [ Gtk.cellText := chanName chan]
+  Gtk.cellLayoutSetAttributes col1 renderer1 model $ \_ -> [ Gtk.cellText := "???"]
+  Gtk.cellLayoutSetAttributes col2 renderer2 model $ \_ -> [ Gtk.cellToggleActive := False]
+
+  _ <- Gtk.treeViewAppendColumn treeview col0
+  _ <- Gtk.treeViewAppendColumn treeview col1
+  _ <- Gtk.treeViewAppendColumn treeview col2
+
+  -- spawn new graph when checkbox is clicked
+  _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
+    let (i:_) = Gtk.stringToTreePath pathStr
+    channel <- Gtk.listStoreGetValue model i
+    graphWin <- newGraph channel
+    -- kill this window when the main window is killed
+    CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
+
+  return treeview
+
+
+
+
+runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
+runPlotter channels backgroundThreadsToKill = do
   _ <- Gtk.initGUI
  
   -- start the main window
@@ -44,15 +89,13 @@ runPlotter channel backgroundThreadsToKill = do
   buttonClear <- Gtk.buttonNewWithLabel "clear all values"
   _ <- Gtk.onClicked buttonClear $ putStrLn "you pressed \"clear\"" -- mapM_ clearVarInfo infos
 
-  -- button to create a new graph
-  buttonNewGraph <- Gtk.buttonNewWithLabel "moar graph"
-  _ <- Gtk.onClicked buttonNewGraph (newGraph graphWindowsToBeKilled channel)
+  chanWidget <- channelWidget channels graphWindowsToBeKilled
 
   -- vbox to hold buttons
   vbox <- Gtk.vBoxNew False 4
   Gtk.set vbox [ Gtk.containerChild := buttonQuit
-               , Gtk.containerChild := buttonNewGraph
                , Gtk.containerChild := buttonClear
+               , Gtk.containerChild := chanWidget
                ]
   --------------------------------------------
 
@@ -62,8 +105,8 @@ runPlotter channel backgroundThreadsToKill = do
 
 
 -- make a new graph window
-newGraph :: CC.MVar [Gtk.Window] -> Channel a -> IO ()
-newGraph graphWindowsToBeKilled channel = do
+newGraph :: Channel -> IO Gtk.Window
+newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
                    , Gtk.windowTitle := "I am a graph"
@@ -76,7 +119,7 @@ newGraph graphWindowsToBeKilled channel = do
                      , lviMarked = False
                      , lviMaxToShow = 100
                      }
-  model <- Gtk.listStoreNew $ map lviInit (chanGetters channel)
+  model <- Gtk.listStoreNew $ map lviInit changetters
   treeview <- Gtk.treeViewNewWithModel model
 
   Gtk.treeViewSetHeadersVisible treeview True
@@ -102,7 +145,7 @@ newGraph graphWindowsToBeKilled channel = do
 
   -- update the model when the toggle buttons are activated
   numToDrawMv <- CC.newMVar 100
-  graphInfoMVar <- CC.newMVar (GraphInfo (chanSeq channel) numToDrawMv [])
+  graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv [])
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     -- toggle the check mark
     let (i:_) = Gtk.stringToTreePath pathStr
@@ -111,7 +154,7 @@ newGraph graphWindowsToBeKilled channel = do
 
     -- update the graph information
     lvis <- Gtk.listStoreToList model
-    let newGraphInfo = GraphInfo (chanSeq channel) numToDrawMv [(lviName lvi, lviGetter lvi) | lvi <- lvis, lviMarked lvi]
+    let newGraphInfo = GraphInfo chanseq numToDrawMv [(lviName lvi, lviGetter lvi) | lvi <- lvis, lviMarked lvi]
     _ <- CC.swapMVar graphInfoMVar newGraphInfo
     return ()
 
@@ -132,10 +175,8 @@ newGraph graphWindowsToBeKilled channel = do
                , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]
 
-  -- kill this window when the main window is killed
-  CC.modifyMVar_ graphWindowsToBeKilled (return . (win:))
-
   Gtk.widgetShowAll win
+  return win
 
 
 animationWaitTime :: Int

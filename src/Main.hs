@@ -12,7 +12,7 @@ import Data.Sequence ( (|>) )
 
 import Plotter ( runPlotter )
 import Accessors ( makeAccessors )
-import PlotTypes
+import PlotTypes ( Channel(..) )
 
 data Xyz = MkXyz { x_ :: Double
                  , y_ :: Double
@@ -22,31 +22,28 @@ data Axyz = MkAxyz { a_ :: Double
                    , xyz_ :: Xyz
                    }
 
-class FieldNames a where
-  toFN :: a -> [(String, a -> Double)]
+incrementAxyz :: Axyz -> Axyz
+incrementAxyz (MkAxyz a _) = MkAxyz (a+0.2) (MkXyz (sin a) (cos a) (sin a * cos a))
 
-data FieldSettings = FieldSettings { fsHistorySize :: Int
-                                   , fsShowNum :: Int
-                                   }
+incrementXyz :: Xyz -> Xyz
+incrementXyz (MkXyz a _ _) = MkXyz (a+0.3) (2 * sin a) (3 * cos a)
 
 -- a random function to write a bunch of Axyz to a chan
-runProducer :: CC.Chan Axyz -> Axyz -> IO ()
-runProducer chan x = do
-  let increment :: Axyz -> Axyz
-      increment (MkAxyz a _) = MkAxyz (a+0.5) (MkXyz (sin a) (cos a) (sin a * cos a))
-  CC.threadDelay 50000
-  CC.writeChan chan (increment x)
-  runProducer chan (increment x)
+runProducer :: Int -> (a -> a) -> CC.Chan a -> a -> IO b
+runProducer delay inc chan x = do
+  CC.threadDelay delay
+  CC.writeChan chan (inc x)
+  runProducer delay inc chan (inc x)
 
 -- reads the chan and calls receiveNewMessage
 serverLoop :: CC.Chan a -> (a -> IO ()) -> IO ()
-serverLoop chan receiveNewMessage = do
+serverLoop chan receiveNewMessage' = do
   val <- CC.readChan chan
-  receiveNewMessage val
-  serverLoop chan receiveNewMessage
+  receiveNewMessage' val
+  serverLoop chan receiveNewMessage'
 
-receiveNewMessage' :: CC.MVar Int -> CC.MVar (S.Seq a) -> a -> IO ()
-receiveNewMessage' maxNum' msgList newMsg = do
+receiveNewMessage :: CC.MVar Int -> CC.MVar (S.Seq a) -> a -> IO ()
+receiveNewMessage maxNum' msgList newMsg = do
   maxNum <- CC.readMVar maxNum'
   let f seq0 = return $ S.drop (S.length seq0 + 1 - maxNum) (seq0 |> newMsg)
   CC.modifyMVar_ msgList f
@@ -55,15 +52,34 @@ main :: IO ()
 main = do
 --  _ <- EKG.forkServer "localhost" 8000
 
-  chan <- CC.newChan
-  producerTid <- CC.forkIO $ runProducer chan $ MkAxyz 7 (MkXyz 1 2 3)-- 4)
+  chan0 <- (CC.newChan :: IO (CC.Chan Axyz))
+  chan1 <- (CC.newChan :: IO (CC.Chan Xyz))
+  
+  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (MkXyz 1 2 3)-- 4)
+  producerTid1 <- CC.forkIO $ runProducer 60000 incrementXyz chan1 $ MkXyz 0 2 3
 
-  maxNumMV <- CC.newMVar (100 :: Int)
-  seqmv <- CC.newMVar S.empty
-  serverTid <- CC.forkIO $ serverLoop chan (receiveNewMessage' maxNumMV seqmv)
+  maxNumMV0 <- CC.newMVar (100 :: Int)
+  maxNumMV1 <- CC.newMVar (100 :: Int)
+  
+  seqmv0 <- CC.newMVar S.empty
+  seqmv1 <- CC.newMVar S.empty
+  
+  serverTid0 <- CC.forkIO $ serverLoop chan0 (receiveNewMessage maxNumMV0 seqmv0)
+  serverTid1 <- CC.forkIO $ serverLoop chan1 (receiveNewMessage maxNumMV1 seqmv1)
 
 --  (receiveNewMessage, infos) <- $(setupTelem "position" ''Axyz)
 --  serverTid <- CC.forkIO $ serverLoop chan receiveNewMessage
 
-  let accessors = $(makeAccessors "position" ''Axyz)
-  runPlotter (Channel accessors seqmv maxNumMV) [producerTid, serverTid]
+  let accessors0 = $(makeAccessors "positionPlus" ''Axyz)
+      accessors1 = $(makeAccessors "position" ''Xyz)
+
+      c0 = Channel "positionPlus" accessors0 seqmv0 maxNumMV0
+      c1 = Channel "position" accessors1 seqmv1 maxNumMV1
+      channels = [ c0
+                 , c1
+                 ]
+  runPlotter channels [ producerTid0
+                      , producerTid1
+                      , serverTid0
+                      , serverTid1
+                      ]

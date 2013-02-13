@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# Language ExistentialQuantification #-}
 
 module PlotTypes ( GraphInfo(..)
                  , Channel(..)
@@ -14,10 +15,11 @@ import qualified Text.ProtocolBuffers.Header as P'
 -- what the graph should draw
 data GraphInfo a = GraphInfo (MVar (Seq a)) (MVar Int) [(String, a -> PbPrim)]
 
-data Channel a = Channel { chanGetters :: [(String, a -> PbPrim)]
-                         , chanSeq :: MVar (Seq a)
-                         , chanMaxNum :: MVar Int
-                         }
+data Channel = forall a. Channel { chanName :: String
+                                 , chanGetters :: [(String, a -> PbPrim)]
+                                 , chanSeq :: MVar (Seq a)
+                                 , chanMaxNum :: MVar Int
+                                 }
 
 data PbPrim = PbDouble Double
             | PbFloat Float

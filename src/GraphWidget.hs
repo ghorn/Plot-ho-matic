@@ -8,7 +8,7 @@ import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 
-import PlotTypes ( Channel(..), PbPrim )
+import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
 import PlotChart ( GraphInfo(..), updateCanvas)
 
 data ListViewInfo a = ListViewInfo { lviName :: String
@@ -59,6 +59,7 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
 
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
+  mapM_ (Gtk.comboBoxAppendText xaxisSelector) ["(counter)","(timestamp)"]
   mapM_ (Gtk.comboBoxAppendText xaxisSelector . fst) changetters
   Gtk.comboBoxSetActive xaxisSelector 0
 
@@ -71,12 +72,17 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
                    ]
 
   -- update which one is the x axis
-  graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv (head changetters) [])
+  graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv XAxisCounter [])
   
   let updateXAxis = do
         k <- Gtk.comboBoxGetActive xaxisSelector
-        _ <- CC.modifyMVar_ graphInfoMVar $
-             \(GraphInfo a b _ d) -> return (GraphInfo a b (changetters !! k) d)
+        _ <- case k of
+          0 -> CC.modifyMVar_ graphInfoMVar $
+               \(GraphInfo a b _ d) -> return (GraphInfo a b XAxisCounter d)
+          1 -> CC.modifyMVar_ graphInfoMVar $
+               \(GraphInfo a b _ d) -> return (GraphInfo a b XAxisTime d)
+          _ -> CC.modifyMVar_ graphInfoMVar $
+               \(GraphInfo a b _ d) -> return (GraphInfo a b (XAxisFun (changetters !! (k-2))) d)
         return ()
   updateXAxis
   _ <- on xaxisSelector Gtk.changed updateXAxis

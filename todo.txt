@@ -6,8 +6,6 @@ channel window:
 plot window:
   use tree instead of lists
 
-add a timestamp when the message arrived and a counter of how many messages there are and allow those to be x axis values
-
 figure out how to use RTS to display the amount of memory being used
 
 show NMPC horizon

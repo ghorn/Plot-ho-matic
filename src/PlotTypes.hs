@@ -3,20 +3,26 @@
 
 module PlotTypes ( Channel(..)
                  , PbPrim(..)
+                 , XAxisType(..)
                  , pbpToFrac
                  ) where
 
 import Control.Concurrent ( MVar )
-import Data.Sequence ( Seq )
 import qualified Data.ByteString.Lazy as BSL
+import Data.Sequence ( Seq )
+import Data.Time ( NominalDiffTime )
 import qualified Text.ProtocolBuffers.Header as P'
+
+data XAxisType a = XAxisTime
+                 | XAxisCounter
+                 | XAxisFun (String, a -> PbPrim)
 
 data Channel = forall a. Channel { chanName :: String
                                  , chanGetters :: [(String, a -> PbPrim)]
-                                 , chanSeq :: MVar (Seq a)
---                                 , chanSeq :: MVar (Seq (Double,a))
+                                 , chanSeq :: MVar (Seq (a,Int,NominalDiffTime))
                                  , chanMaxNum :: MVar Int
                                  }
+
 
 data PbPrim = PbDouble Double
             | PbFloat Float
@@ -28,6 +34,7 @@ data PbPrim = PbDouble Double
             | PbUtf8 P'.Utf8
 --            | PbByteString P'.ByteString
             | PbByteString BSL.ByteString
+
 
 pbpToFrac :: Fractional a => PbPrim -> Maybe a
 pbpToFrac (PbDouble c)     = Just $ realToFrac c

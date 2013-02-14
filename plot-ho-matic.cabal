@@ -32,6 +32,7 @@ executable plot-ho-matic
                      gtkglext,
                      data-accessor,
                      Chart,
+                     time,
                      ekg
 
 --  if os(OSX)

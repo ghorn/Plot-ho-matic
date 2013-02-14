@@ -9,7 +9,7 @@ import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 
 import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
-import PlotChart ( GraphInfo(..), updateCanvas)
+import PlotChart ( GraphInfo(..), newChartCanvas )
 
 data ListViewInfo a = ListViewInfo { lviName :: String
                                    , lviGetter :: a -> PbPrim
@@ -139,13 +139,7 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
 
 
   -- chart drawing area
-  chartCanvas <- Gtk.drawingAreaNew
-  _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
-  _ <- Gtk.onExpose chartCanvas $ const (updateCanvas graphInfoMVar chartCanvas)
-  _ <- Gtk.timeoutAddFull (do
-      Gtk.widgetQueueDraw chartCanvas
-      return True)
-    Gtk.priorityDefaultIdle animationWaitTime
+  chartCanvas <- newChartCanvas graphInfoMVar animationWaitTime
 
   -- vbox to hold x axis selector and treeview
   vbox <- Gtk.vBoxNew False 4

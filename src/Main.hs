@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 --{-# OPTIONS_GHC -ddump-splices #-}
 {-# Language TemplateHaskell #-}
---{-# Language OverloadedStrings #-}
+{-# Language OverloadedStrings #-}
 
 module Main ( main ) where
 
@@ -9,7 +9,7 @@ import qualified Control.Concurrent as CC
 import qualified Data.Sequence as S
 import Data.Sequence ( (|>) )
 import Data.Time ( UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime )
---import qualified System.Remote.Monitoring as EKG
+import qualified System.Remote.Monitoring as EKG
 
 import Plotter ( runPlotter )
 import Accessors ( makeAccessors )
@@ -53,7 +53,7 @@ receiveNewMessage time0 maxNum' msgList k time newMsg = do
 
 main :: IO ()
 main = do
---  _ <- EKG.forkServer "localhost" 8000
+  ekgTid <- fmap EKG.serverThreadId $ EKG.forkServer "localhost" 8000
   time0 <- getCurrentTime
   
   chan0 <- CC.newChan
@@ -83,4 +83,5 @@ main = do
                       , producerTid1
                       , serverTid0
                       , serverTid1
+                      , ekgTid
                       ]

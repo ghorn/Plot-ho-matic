@@ -20,7 +20,7 @@ data XAxisType a = XAxisTime
 data Channel = forall a. Channel { chanName :: String
                                  , chanGetters :: [(String, a -> PbPrim)]
                                  , chanSeq :: MVar (Seq (a,Int,NominalDiffTime))
-                                 , chanMaxNum :: MVar Int
+                                 , chanMaxHist :: MVar Int
                                  }
 
 

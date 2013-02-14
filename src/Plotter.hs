@@ -6,10 +6,14 @@ import qualified Control.Concurrent as CC
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
+import Text.Read ( readMaybe )
 
 import PlotTypes ( Channel(..) )
 import GraphWidget ( newGraph )
 
+data ListView = ListView { lvChan :: Channel
+                         , lvMaxHist :: Int
+                         }
 
 animationWaitTime :: Int
 animationWaitTime = 3
@@ -57,7 +61,10 @@ runPlotter channels backgroundThreadsToKill = do
 newChannelWidget :: [Channel] -> CC.MVar [Gtk.Window] -> IO Gtk.TreeView
 newChannelWidget channels graphWindowsToBeKilled = do
   -- create a new tree model
-  model <- Gtk.listStoreNew channels
+  let toListView ch = do
+        k <- CC.readMVar $ chanMaxHist ch
+        return $ ListView { lvChan = ch, lvMaxHist = k }
+  model <- mapM toListView channels >>= Gtk.listStoreNew
   treeview <- Gtk.treeViewNewWithModel model
   Gtk.treeViewSetHeadersVisible treeview True
 
@@ -78,10 +85,13 @@ newChannelWidget channels graphWindowsToBeKilled = do
   Gtk.cellLayoutPackStart col1 renderer1 True
   Gtk.cellLayoutPackStart col2 renderer2 True
 
-  Gtk.cellLayoutSetAttributes col0 renderer0 model $ \chan -> [ Gtk.cellText := chanName chan]
-  Gtk.cellLayoutSetAttributes col1 renderer1 model $ \_ -> [ Gtk.cellText := "???"]
+  Gtk.cellLayoutSetAttributes col0 renderer0 model $ \lv -> [ Gtk.cellText := chanName (lvChan lv)]
+  Gtk.cellLayoutSetAttributes col1 renderer1 model $ \lv -> [ Gtk.cellText := show (lvMaxHist lv)
+                                                            , Gtk.cellTextEditable := True
+                                                            ]
   Gtk.cellLayoutSetAttributes col2 renderer2 model $ \_ -> [ Gtk.cellToggleActive := False]
 
+  
   _ <- Gtk.treeViewAppendColumn treeview col0
   _ <- Gtk.treeViewAppendColumn treeview col1
   _ <- Gtk.treeViewAppendColumn treeview col2
@@ -89,10 +99,30 @@ newChannelWidget channels graphWindowsToBeKilled = do
   -- spawn a new graph when a checkbox is clicked
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     let (i:_) = Gtk.stringToTreePath pathStr
-    channel <- Gtk.listStoreGetValue model i
-    graphWin <- newGraph animationWaitTime channel
+    lv <- Gtk.listStoreGetValue model i
+    graphWin <- newGraph animationWaitTime (lvChan lv)
     
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
+
+
+  -- how long to make the history
+  _ <- on renderer1 Gtk.edited $ \treePath txt -> do
+    let (i:_) = treePath
+    lv <- Gtk.listStoreGetValue model i
+    putStrLn $ "history len: " ++ txt
+    case readMaybe txt of
+      Nothing -> do
+        putStrLn $ "invalid non-integer range entry: " ++ txt
+        k0 <- CC.readMVar $ chanMaxHist (lvChan lv)
+        Gtk.listStoreSetValue model i (lv {lvMaxHist = k0})
+      Just k -> if (k < 0)
+                then do
+                  putStrLn $ "invalid negative range entry: " ++ txt
+                  k0 <- CC.readMVar $ chanMaxHist (lvChan lv)
+                  Gtk.listStoreSetValue model i (lv {lvMaxHist = k0})
+                else do
+                  _ <- CC.swapMVar (chanMaxHist (lvChan lv)) k
+                  return ()
 
   return treeview

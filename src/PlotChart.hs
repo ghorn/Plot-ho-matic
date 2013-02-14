@@ -21,8 +21,12 @@ data GraphInfo a = GraphInfo
                    (XAxisType a)
                    [(String, a -> PbPrim)]
 
-newChartCanvas :: CC.MVar (GraphInfo a) -> Int -> IO Gtk.DrawingArea
-newChartCanvas graphInfoMVar animationWaitTime = do
+-- milliseconds for draw time
+animationWaitTime :: Int
+animationWaitTime = 33
+
+newChartCanvas :: CC.MVar (GraphInfo a) -> IO Gtk.DrawingArea
+newChartCanvas graphInfoMVar = do
   -- chart drawing area
   chartCanvas <- Gtk.drawingAreaNew
   _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250

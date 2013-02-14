@@ -18,8 +18,8 @@ data ListViewInfo a = ListViewInfo { lviName :: String
                                    }
 
 -- make a new graph window
-newGraph :: Int -> Channel -> IO Gtk.Window
-newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
+newGraph :: Channel -> IO Gtk.Window
+newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
   numToDrawMv <- CC.newMVar 0 -- changed immediately
 
@@ -139,7 +139,7 @@ newGraph animationWaitTime (Channel {chanGetters = changetters, chanSeq = chanse
 
 
   -- chart drawing area
-  chartCanvas <- newChartCanvas graphInfoMVar animationWaitTime
+  chartCanvas <- newChartCanvas graphInfoMVar
 
   -- vbox to hold x axis selector and treeview
   vbox <- Gtk.vBoxNew False 4

@@ -15,9 +15,6 @@ data ListView = ListView { lvChan :: Channel
                          , lvMaxHist :: Int
                          }
 
-animationWaitTime :: Int
-animationWaitTime = 3
-
 runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
 runPlotter channels backgroundThreadsToKill = do
   _ <- Gtk.initGUI
@@ -100,7 +97,7 @@ newChannelWidget channels graphWindowsToBeKilled = do
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     let (i:_) = Gtk.stringToTreePath pathStr
     lv <- Gtk.listStoreGetValue model i
-    graphWin <- newGraph animationWaitTime (lvChan lv)
+    graphWin <- newGraph (lvChan lv)
     
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))

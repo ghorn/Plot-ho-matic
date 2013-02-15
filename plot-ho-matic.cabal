@@ -29,7 +29,6 @@ executable plot-ho-matic
                      OpenGL,
                      glib,
                      gtk,
-                     gtkglext,
                      data-accessor,
                      Chart,
                      time,

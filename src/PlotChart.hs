@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module PlotChart ( GraphInfo(..), newChartCanvas, updateCanvas ) where
+module PlotChart ( AxisScaling(..), GraphInfo(..), newChartCanvas, updateCanvas ) where
 
 import qualified Control.Concurrent as CC
 import Data.Accessor
@@ -14,12 +14,16 @@ import qualified Graphics.Rendering.Chart as Chart
  
 import PlotTypes ( XAxisType(..), PbPrim, pbpToFrac )
 
+data AxisScaling = LogScaling
+                 | LinearScaling
+
 -- what the graph should draw
-data GraphInfo a = GraphInfo
-                   (CC.MVar (S.Seq (a,Int,NominalDiffTime)))
-                   (CC.MVar Int)
-                   (XAxisType a)
-                   [(String, a -> PbPrim)]
+data GraphInfo a = GraphInfo { giData :: (CC.MVar (S.Seq (a,Int,NominalDiffTime)))
+                             , giLen :: CC.MVar Int
+                             , giXAxis :: XAxisType a
+                             , giYScaling :: AxisScaling
+                             , giGetters :: [(String, a -> PbPrim)]
+                             }
 
 -- milliseconds for draw time
 animationWaitTime :: Int
@@ -40,7 +44,7 @@ newChartCanvas graphInfoMVar = do
 
 updateCanvas :: CC.MVar (GraphInfo a) -> Gtk.DrawingArea  -> IO Bool
 updateCanvas graphInfoMVar canvas = do
-  (GraphInfo logSeq' numToDraw' xaxis getters) <- CC.readMVar graphInfoMVar
+  (GraphInfo logSeq' numToDraw' xaxis yScaling getters) <- CC.readMVar graphInfoMVar
   numToDraw <- CC.readMVar numToDraw'
   logSeq <- CC.readMVar logSeq'
   let shortLog = S.drop (S.length logSeq - numToDraw) logSeq
@@ -54,12 +58,12 @@ updateCanvas graphInfoMVar canvas = do
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
   win <- Gtk.widgetGetDrawWindow canvas
-  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart xaxisName xaxisVals namePcs) sz) Chart.vectorEnv
+  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart yScaling xaxisName xaxisVals namePcs) sz) Chart.vectorEnv
   return True
 
-displayChart :: (F.Foldable t, Chart.PlotValue a) =>
-                String -> t (Maybe a) -> [(String, t (Maybe a))] -> Chart.Renderable ()
-displayChart xaxisName xaxis namePcs = Chart.toRenderable layout
+displayChart :: (F.Foldable t, Chart.PlotValue a, Show a, RealFloat a) =>
+                AxisScaling -> String -> t (Maybe a) -> [(String, t (Maybe a))] -> Chart.Renderable ()
+displayChart yScaling xaxisName xaxis namePcs = Chart.toRenderable layout
   where
     f (Just x, Just y)  = Just (x,y)
     f _ = Nothing
@@ -70,7 +74,13 @@ displayChart xaxisName xaxis namePcs = Chart.toRenderable layout
         $ Chart.plot_lines_title ^= name
         $ Chart.defaultPlotLines
     allLines = zipWith drawOne namePcs Chart.defaultColorSeq
+
+    yscaleFun = case yScaling of
+      LogScaling -> Chart.layout1_left_axis .> Chart.laxis_generate ^= Chart.autoScaledLogAxis Chart.defaultLogAxis
+      LinearScaling -> id
+
     layout = Chart.layout1_title ^= "Wooo"
              $ Chart.layout1_plots ^= map (Left . Chart.toPlot) allLines
              $ Chart.layout1_bottom_axis .> Chart.laxis_title ^= xaxisName
+             $ yscaleFun
              $ Chart.defaultLayout1

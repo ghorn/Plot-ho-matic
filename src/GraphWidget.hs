@@ -12,12 +12,25 @@ import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 
 import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
-import PlotChart ( GraphInfo(..), newChartCanvas )
+import PlotChart ( GraphInfo(..), AxisScaling(..), newChartCanvas )
 
 data ListViewInfo a = ListViewInfo { lviName :: String
                                    , lviGetter :: Maybe (a -> PbPrim)
                                    , lviMarked :: Bool
                                    }
+
+
+labeledWidget :: Gtk.WidgetClass a => String -> a -> IO Gtk.HBox
+labeledWidget name widget = do
+  label <- Gtk.labelNew (Just name)
+  hbox <- Gtk.hBoxNew False 4
+  Gtk.set hbox [ Gtk.containerChild := label
+               , Gtk.containerChild := widget
+               , Gtk.boxChildPacking label := Gtk.PackNatural
+--               , Gtk.boxChildPacking widget := Gtk.PackNatural
+               ]
+  return hbox
+
 
 -- make a new graph window
 newGraph :: Channel -> IO Gtk.Window
@@ -31,13 +44,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
 
   -- how many to show?
   plotLength <- Gtk.entryNew
-  plotLengthLabel <- Gtk.labelNew (Just "range:")
-  plotLengthBox <- Gtk.hBoxNew False 4
-  Gtk.set plotLengthBox [ Gtk.containerChild := plotLengthLabel
-                        , Gtk.containerChild := plotLength
-                        , Gtk.boxChildPacking plotLengthLabel := Gtk.PackNatural
---                        , Gtk.boxChildPacking plotLength := Gtk.PackNatural
-                        ]
+  plotLengthBox <- labeledWidget "range:" plotLength
   
   Gtk.set plotLength [Gtk.entryText := "100"]
   let updatePlotLength = do
@@ -59,6 +66,14 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   updatePlotLength
   _ <- on plotLength Gtk.entryActivate updatePlotLength
 
+  -- mvar with everything the graphs need to plot
+  graphInfoMVar <- CC.newMVar $ GraphInfo { giData = chanseq
+                                          , giLen = numToDrawMv
+                                          , giXAxis = XAxisCounter
+                                          , giYScaling = LinearScaling
+                                          , giGetters = []
+                                          }
+
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
   mapM_ (Gtk.comboBoxAppendText xaxisSelector) ["(counter)","(timestamp)"]
@@ -67,31 +82,39 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
       xaxisGetters = catMaybes $ map f (Tree.flatten changetters)
   mapM_ (Gtk.comboBoxAppendText xaxisSelector. fst) xaxisGetters
   Gtk.comboBoxSetActive xaxisSelector 0
+  xaxisBox <- labeledWidget "x axis:" xaxisSelector
 
-  xaxisLabel <- Gtk.labelNew (Just "x axis:")
-  xaxisBox <- Gtk.hBoxNew False 4
-  Gtk.set xaxisBox [ Gtk.containerChild := xaxisLabel
-                   , Gtk.containerChild := xaxisSelector
-                   , Gtk.boxChildPacking xaxisLabel := Gtk.PackNatural
---                   , Gtk.boxChildPacking xaxisSelector := Gtk.PackNatural
-                   ]
-
-  -- update which one is the x axis
-  graphInfoMVar <- CC.newMVar (GraphInfo chanseq numToDrawMv XAxisCounter [])
-  
   let updateXAxis = do
         k <- Gtk.comboBoxGetActive xaxisSelector
         _ <- case k of
           0 -> CC.modifyMVar_ graphInfoMVar $
-               \(GraphInfo a b _ d) -> return (GraphInfo a b XAxisCounter d)
+               \gi -> return $ gi {giXAxis = XAxisCounter}
           1 -> CC.modifyMVar_ graphInfoMVar $
-               \(GraphInfo a b _ d) -> return (GraphInfo a b XAxisTime d)
+               \gi -> return $ gi {giXAxis = XAxisTime}
           _ -> CC.modifyMVar_ graphInfoMVar $
-               \(GraphInfo a b _ d) -> return (GraphInfo a b (XAxisFun (xaxisGetters !! (k-2))) d)
+               \gi -> return $ gi {giXAxis = XAxisFun (xaxisGetters !! (k-2))}
         return ()
   updateXAxis
   _ <- on xaxisSelector Gtk.changed updateXAxis
 
+
+  -- linear or log scaling on the y axis?
+  yscalingSelector <- Gtk.comboBoxNewText
+  mapM_ (Gtk.comboBoxAppendText yscalingSelector) ["linear","logarithmic"]
+  Gtk.comboBoxSetActive yscalingSelector 0
+  yscalingBox <- labeledWidget "y scaling:" yscalingSelector
+
+  let updateYScaling = do
+        k <- Gtk.comboBoxGetActive yscalingSelector
+        _ <- case k of
+          0 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giYScaling = LinearScaling}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giYScaling = LogScaling}
+          _ -> error "y scaling should be 0 or 1"
+        return ()
+  updateYScaling
+  _ <- on yscalingSelector Gtk.changed updateYScaling
 
 
   -- create a new tree model
@@ -124,11 +147,9 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   let -- update the graph information
       updateGraphInfo = do
         lvis <- Gtk.treeStoreGetTree model [0]
-        let swapGraphInfo (GraphInfo _ _ xaxisget _) =
-              GraphInfo chanseq numToDrawMv xaxisget
-              [(lviName lvi, fromJust $ lviGetter lvi) | lvi <- Tree.flatten lvis, lviMarked lvi, isJust (lviGetter lvi)]
+        let newGetters = [(lviName lvi, fromJust $ lviGetter lvi) | lvi <- Tree.flatten lvis, lviMarked lvi, isJust (lviGetter lvi)]
             
-        _ <- CC.modifyMVar_ graphInfoMVar (return . swapGraphInfo)
+        _ <- CC.modifyMVar_ graphInfoMVar (\gi0 -> return $ gi0 { giGetters = newGetters })
         return ()
   
   -- update which y axes are visible
@@ -145,17 +166,19 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   -- chart drawing area
   chartCanvas <- newChartCanvas graphInfoMVar
 
-  -- vbox to hold x axis selector and treeview
+  -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
   Gtk.set vbox [ Gtk.containerChild := plotLengthBox
                , Gtk.containerChild := xaxisBox
+               , Gtk.containerChild := yscalingBox
                , Gtk.containerChild := treeview
                , Gtk.boxChildPacking plotLengthBox := Gtk.PackNatural
                , Gtk.boxChildPacking xaxisBox := Gtk.PackNatural
+               , Gtk.boxChildPacking yscalingBox := Gtk.PackNatural
 --               , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]
 
-  -- hbox to hold treeview and gl drawing
+  -- hbox to hold eveything
   hbox <- Gtk.hBoxNew False 4
   Gtk.set hbox [ Gtk.containerChild := vbox
                , Gtk.containerChild := chartCanvas

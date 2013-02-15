@@ -36,7 +36,17 @@ labeledWidget name widget = do
 newGraph :: Channel -> IO Gtk.Window
 newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
-  numToDrawMv <- CC.newMVar 0 -- changed immediately
+
+  -- mvar with everything the graphs need to plot
+  graphInfoMVar <- CC.newMVar $ GraphInfo { giData = chanseq
+                                          , giLen = 0 -- changed immediately
+                                          , giXAxis = XAxisCounter
+                                          , giXScaling = LinearScaling
+                                          , giYScaling = LinearScaling
+                                          , giXRange = Nothing
+                                          , giYRange = Nothing
+                                          , giGetters = []
+                                          }
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
                    , Gtk.windowTitle := "I am a graph"
@@ -44,36 +54,26 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
 
   -- how many to show?
   plotLength <- Gtk.entryNew
-  plotLengthBox <- labeledWidget "range:" plotLength
+  plotLengthBox <- labeledWidget "# points to plot:" plotLength
   
   Gtk.set plotLength [Gtk.entryText := "100"]
   let updatePlotLength = do
-        len <- Gtk.get plotLength Gtk.entryText
-        case readMaybe len of
+        txt <- Gtk.get plotLength Gtk.entryText
+        gi <- CC.readMVar graphInfoMVar
+        case readMaybe txt of
           Nothing -> do
-            putStrLn $ "invalid non-integer range entry: " ++ len
-            k' <- CC.readMVar numToDrawMv
-            Gtk.set plotLength [Gtk.entryText := show k']
+            putStrLn $ "invalid non-integer range entry: " ++ txt
+            Gtk.set plotLength [Gtk.entryText := show (giLen gi)]
           Just k -> if (k < 0)
                     then do
-                      putStrLn $ "invalid negative range entry: " ++ len
-                      k' <- CC.readMVar numToDrawMv
-                      Gtk.set plotLength [Gtk.entryText := show k']
+                      putStrLn $ "invalid negative range entry: " ++ txt
+                      Gtk.set plotLength [Gtk.entryText := show (giLen gi)]
                       return ()
                     else do
-                      _ <- CC.swapMVar numToDrawMv k
+                      _ <- CC.swapMVar graphInfoMVar (gi {giLen = k})
                       return ()
   updatePlotLength
   _ <- on plotLength Gtk.entryActivate updatePlotLength
-
-  -- mvar with everything the graphs need to plot
-  graphInfoMVar <- CC.newMVar $ GraphInfo { giData = chanseq
-                                          , giLen = numToDrawMv
-                                          , giXAxis = XAxisCounter
-                                          , giXScaling = LinearScaling
-                                          , giYScaling = LinearScaling
-                                          , giGetters = []
-                                          }
 
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
@@ -99,37 +99,115 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   _ <- on xaxisSelector Gtk.changed updateXAxis
 
 
+  -- user selectable range
+  xRange <- Gtk.entryNew
+  yRange <- Gtk.entryNew
+  Gtk.set xRange [ Gtk.entryEditable := False
+                 , Gtk.widgetSensitive := False
+                 ]
+  Gtk.set yRange [ Gtk.entryEditable := False
+                 , Gtk.widgetSensitive := False
+                 ]
+  xRangeBox <- labeledWidget "x range:" xRange
+  yRangeBox <- labeledWidget "y range:" yRange
+  Gtk.set xRange [Gtk.entryText := "(-10,10)"]
+  Gtk.set yRange [Gtk.entryText := "(-10,10)"]
+  let updateXRange = do
+        Gtk.set xRange [ Gtk.entryEditable := True
+                       , Gtk.widgetSensitive := True
+                       ]
+        txt <- Gtk.get xRange Gtk.entryText
+        gi <- CC.readMVar graphInfoMVar
+        case readMaybe txt of
+          Nothing -> do
+            putStrLn $ "invalid x range entry: " ++ txt
+            Gtk.set xRange [Gtk.entryText := "(min,max)"]
+          Just (z0,z1) -> if (z0 >= z1)
+                    then do
+                      putStrLn $ "invalid x range entry (min >= max): " ++ txt
+                      Gtk.set xRange [Gtk.entryText := "(min,max)"]
+                      return ()
+                    else do
+                      _ <- CC.swapMVar graphInfoMVar (gi {giXRange = Just (z0,z1)})
+                      return ()
+  let updateYRange = do
+        Gtk.set yRange [ Gtk.entryEditable := True
+                       , Gtk.widgetSensitive := True
+                       ]
+        txt <- Gtk.get yRange Gtk.entryText
+        gi <- CC.readMVar graphInfoMVar
+        case readMaybe txt of
+          Nothing -> do
+            putStrLn $ "invalid y range entry: " ++ txt
+            Gtk.set yRange [Gtk.entryText := "(min,max)"]
+          Just (z0,z1) -> if (z0 >= z1)
+                    then do
+                      putStrLn $ "invalid y range entry (min >= max): " ++ txt
+                      Gtk.set yRange [Gtk.entryText := "(min,max)"]
+                      return ()
+                    else do
+                      _ <- CC.swapMVar graphInfoMVar (gi {giYRange = Just (z0,z1)})
+                      return ()
+  _ <- on xRange Gtk.entryActivate updateXRange
+  _ <- on yRange Gtk.entryActivate updateYRange
+
   -- linear or log scaling on the x and y axis?
-  xscalingSelector <- Gtk.comboBoxNewText
-  yscalingSelector <- Gtk.comboBoxNewText
-  mapM_ (Gtk.comboBoxAppendText xscalingSelector) ["linear","logarithmic"]
-  mapM_ (Gtk.comboBoxAppendText yscalingSelector) ["linear","logarithmic"]
-  Gtk.comboBoxSetActive xscalingSelector 0
-  Gtk.comboBoxSetActive yscalingSelector 0
-  xscalingBox <- labeledWidget "x scaling:" xscalingSelector
-  yscalingBox <- labeledWidget "y scaling:" yscalingSelector
+  xScalingSelector <- Gtk.comboBoxNewText
+  yScalingSelector <- Gtk.comboBoxNewText
+  mapM_ (Gtk.comboBoxAppendText xScalingSelector)
+    ["linear (auto)","linear (manual)","logarithmic (auto)"]
+  mapM_ (Gtk.comboBoxAppendText yScalingSelector)
+    ["linear (auto)","linear (manual)","logarithmic (auto)"]
+  Gtk.comboBoxSetActive xScalingSelector 0
+  Gtk.comboBoxSetActive yScalingSelector 0
+  xScalingBox <- labeledWidget "x scaling:" xScalingSelector
+  yScalingBox <- labeledWidget "y scaling:" yScalingSelector
   let updateXScaling = do
-        k <- Gtk.comboBoxGetActive xscalingSelector
+        k <- Gtk.comboBoxGetActive xScalingSelector
         _ <- case k of
-          0 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXScaling = LinearScaling}
-          1 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXScaling = LogScaling}
-          _ -> error "y scaling should be 0 or 1"
+          0 -> do
+            Gtk.set xRange [ Gtk.entryEditable := False
+                           , Gtk.widgetSensitive := False
+                           ]
+            CC.modifyMVar_ graphInfoMVar $
+              \gi -> return $ gi {giXScaling = LinearScaling, giXRange = Nothing}
+          1 -> do
+            CC.modifyMVar_ graphInfoMVar $
+              \gi -> return $ gi {giXScaling = LinearScaling, giXRange = Nothing}
+            updateXRange
+          2 -> do
+            Gtk.set xRange [ Gtk.entryEditable := False
+                           , Gtk.widgetSensitive := False
+                           ]
+            CC.modifyMVar_ graphInfoMVar $
+              \gi -> return $ gi {giXScaling = LogScaling, giXRange = Nothing}
+          _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 3"
         return ()
   let updateYScaling = do
-        k <- Gtk.comboBoxGetActive yscalingSelector
+        k <- Gtk.comboBoxGetActive yScalingSelector
         _ <- case k of
-          0 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giYScaling = LinearScaling}
-          1 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giYScaling = LogScaling}
-          _ -> error "y scaling should be 0 or 1"
+          0 -> do
+            Gtk.set yRange [ Gtk.entryEditable := False
+                           , Gtk.widgetSensitive := False
+                           ]
+            CC.modifyMVar_ graphInfoMVar $
+              \gi -> return $ gi {giYScaling = LinearScaling, giYRange = Nothing}
+          1 -> do
+            CC.modifyMVar_ graphInfoMVar $
+              \gi -> return $ gi {giYScaling = LinearScaling, giYRange = Nothing}
+            updateYRange
+          2 -> do
+            Gtk.set yRange [ Gtk.entryEditable := False
+                           , Gtk.widgetSensitive := False
+                           ]
+            CC.modifyMVar_ graphInfoMVar $
+              \gi -> return $ gi {giYScaling = LogScaling, giYRange = Nothing}
+          _ -> error "the \"impossible\" happened: y scaling comboBox index should be < 3"
         return ()
   updateXScaling
   updateYScaling
-  _ <- on xscalingSelector Gtk.changed updateXScaling
-  _ <- on yscalingSelector Gtk.changed updateYScaling
+  _ <- on xScalingSelector Gtk.changed updateXScaling
+  _ <- on yScalingSelector Gtk.changed updateYScaling
 
   -- create a new tree model
   let mkTreeNode (name,maybeget) = ListViewInfo name maybeget False
@@ -183,14 +261,18 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
   Gtk.set vbox [ Gtk.containerChild := plotLengthBox
-               , Gtk.containerChild := yscalingBox
-               , Gtk.containerChild := xscalingBox
+               , Gtk.boxChildPacking   plotLengthBox := Gtk.PackNatural
                , Gtk.containerChild := xaxisBox
+               , Gtk.boxChildPacking   xaxisBox := Gtk.PackNatural
+               , Gtk.containerChild := xScalingBox
+               , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
+               , Gtk.containerChild := xRangeBox
+               , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
+               , Gtk.containerChild := yScalingBox
+               , Gtk.boxChildPacking   yScalingBox := Gtk.PackNatural
+               , Gtk.containerChild := yRangeBox
+               , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
                , Gtk.containerChild := treeview
-               , Gtk.boxChildPacking plotLengthBox := Gtk.PackNatural
-               , Gtk.boxChildPacking xaxisBox := Gtk.PackNatural
-               , Gtk.boxChildPacking yscalingBox := Gtk.PackNatural
-               , Gtk.boxChildPacking xscalingBox := Gtk.PackNatural
 --               , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]
 

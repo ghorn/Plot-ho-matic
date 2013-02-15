@@ -19,10 +19,12 @@ data AxisScaling = LogScaling
 
 -- what the graph should draw
 data GraphInfo a = GraphInfo { giData :: (CC.MVar (S.Seq (a,Int,NominalDiffTime)))
-                             , giLen :: CC.MVar Int
+                             , giLen :: Int
                              , giXAxis :: XAxisType a
                              , giXScaling :: AxisScaling
                              , giYScaling :: AxisScaling
+                             , giXRange :: Maybe (Double,Double)
+                             , giYRange :: Maybe (Double,Double)
                              , giGetters :: [(String, a -> PbPrim)]
                              }
 
@@ -42,13 +44,11 @@ newChartCanvas graphInfoMVar = do
     Gtk.priorityDefaultIdle animationWaitTime
   return chartCanvas
 
-
-updateCanvas :: CC.MVar (GraphInfo a) -> Gtk.DrawingArea  -> IO Bool
+updateCanvas :: Gtk.WidgetClass widget => CC.MVar (GraphInfo a) -> widget -> IO Bool
 updateCanvas graphInfoMVar canvas = do
   gi <- CC.readMVar graphInfoMVar
-  numToDraw <- CC.readMVar (giLen gi)
   datalog <- CC.readMVar (giData gi)
-  let shortLog = S.drop (S.length datalog - numToDraw) datalog
+  let shortLog = S.drop (S.length datalog - (giLen gi)) datalog
       f (name,getter) = (name,fmap (\(x,_,_) -> pbpToFrac (getter x)) shortLog :: Seq (Maybe Double))
       namePcs = map f (giGetters gi)
 
@@ -59,13 +59,15 @@ updateCanvas graphInfoMVar canvas = do
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
   win <- Gtk.widgetGetDrawWindow canvas
-  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render (displayChart (giXScaling gi, giYScaling gi) xaxisName xaxisVals namePcs) sz) Chart.vectorEnv
+  let myGraph = displayChart (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi)
+                xaxisName xaxisVals namePcs
+  _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render myGraph sz) Chart.vectorEnv
   return True
 
 displayChart :: (F.Foldable t, Chart.PlotValue a, Show a, RealFloat a) =>
-                (AxisScaling, AxisScaling) -> String -> t (Maybe a) -> [(String, t (Maybe a))] ->
-                Chart.Renderable ()
-displayChart (xScaling,yScaling) xaxisName xaxis namePcs = Chart.toRenderable layout
+                (AxisScaling, AxisScaling) -> (Maybe (a,a),Maybe (a,a)) -> String ->
+                t (Maybe a) -> [(String, t (Maybe a))] -> Chart.Renderable ()
+displayChart (xScaling,yScaling) (xRange,yRange) xaxisName xaxis namePcs = Chart.toRenderable layout
   where
     f (Just x, Just y)  = Just (x,y)
     f _ = Nothing
@@ -79,10 +81,15 @@ displayChart (xScaling,yScaling) xaxisName xaxis namePcs = Chart.toRenderable la
 
     xscaleFun = case xScaling of
       LogScaling -> Chart.layout1_bottom_axis .> Chart.laxis_generate ^= Chart.autoScaledLogAxis Chart.defaultLogAxis
-      LinearScaling -> id
+      LinearScaling -> case xRange of
+        Nothing -> id
+        Just range -> Chart.layout1_bottom_axis .> Chart.laxis_generate ^= Chart.scaledAxis Chart.defaultLinearAxis range
+
     yscaleFun = case yScaling of
       LogScaling -> Chart.layout1_left_axis .> Chart.laxis_generate ^= Chart.autoScaledLogAxis Chart.defaultLogAxis
-      LinearScaling -> id
+      LinearScaling -> case yRange of
+        Nothing -> id
+        Just range -> Chart.layout1_left_axis .> Chart.laxis_generate ^= Chart.scaledAxis Chart.defaultLinearAxis range
 
     layout = Chart.layout1_title ^= "Wooo"
              $ Chart.layout1_plots ^= map (Left . Chart.toPlot) allLines

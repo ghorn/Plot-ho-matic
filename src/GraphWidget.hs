@@ -3,6 +3,9 @@
 module GraphWidget ( newGraph ) where
 
 import qualified Control.Concurrent as CC
+import Control.Monad ( when )
+import Data.Maybe ( catMaybes, isJust, fromJust )
+import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
@@ -12,9 +15,8 @@ import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
 import PlotChart ( GraphInfo(..), newChartCanvas )
 
 data ListViewInfo a = ListViewInfo { lviName :: String
-                                   , lviGetter :: a -> PbPrim
+                                   , lviGetter :: Maybe (a -> PbPrim)
                                    , lviMarked :: Bool
-                                   , lviMaxToShow :: Int
                                    }
 
 -- make a new graph window
@@ -60,7 +62,10 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
   mapM_ (Gtk.comboBoxAppendText xaxisSelector) ["(counter)","(timestamp)"]
-  mapM_ (Gtk.comboBoxAppendText xaxisSelector . fst) changetters
+  let f (_,Nothing) = Nothing
+      f (x,Just y) = Just (x,y)
+      xaxisGetters = catMaybes $ map f (Tree.flatten changetters)
+  mapM_ (Gtk.comboBoxAppendText xaxisSelector. fst) xaxisGetters
   Gtk.comboBoxSetActive xaxisSelector 0
 
   xaxisLabel <- Gtk.labelNew (Just "x axis:")
@@ -82,7 +87,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
           1 -> CC.modifyMVar_ graphInfoMVar $
                \(GraphInfo a b _ d) -> return (GraphInfo a b XAxisTime d)
           _ -> CC.modifyMVar_ graphInfoMVar $
-               \(GraphInfo a b _ d) -> return (GraphInfo a b (XAxisFun (changetters !! (k-2))) d)
+               \(GraphInfo a b _ d) -> return (GraphInfo a b (XAxisFun (xaxisGetters !! (k-2))) d)
         return ()
   updateXAxis
   _ <- on xaxisSelector Gtk.changed updateXAxis
@@ -90,13 +95,8 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
 
 
   -- create a new tree model
-  let lviInit (name,getter) =
-        ListViewInfo { lviName = name
-                     , lviGetter = getter
-                     , lviMarked = False
-                     , lviMaxToShow = 100
-                     }
-  model <- Gtk.listStoreNew $ map lviInit changetters
+  let mkTreeNode (name,maybeget) = ListViewInfo name maybeget False
+  model <- Gtk.treeStoreNew [fmap mkTreeNode changetters]
   treeview <- Gtk.treeViewNewWithModel model
 
   Gtk.treeViewSetHeadersVisible treeview True
@@ -123,8 +123,10 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   
   let -- update the graph information
       updateGraphInfo = do
-        lvis <- Gtk.listStoreToList model
-        let swapGraphInfo (GraphInfo _ _ xaxisget _) = GraphInfo chanseq numToDrawMv xaxisget [(lviName lvi, lviGetter lvi) | lvi <- lvis, lviMarked lvi]
+        lvis <- Gtk.treeStoreGetTree model [0]
+        let swapGraphInfo (GraphInfo _ _ xaxisget _) =
+              GraphInfo chanseq numToDrawMv xaxisget
+              [(lviName lvi, fromJust $ lviGetter lvi) | lvi <- Tree.flatten lvis, lviMarked lvi, isJust (lviGetter lvi)]
             
         _ <- CC.modifyMVar_ graphInfoMVar (return . swapGraphInfo)
         return ()
@@ -132,9 +134,11 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   -- update which y axes are visible
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     -- toggle the check mark
-    let (i:_) = Gtk.stringToTreePath pathStr
-    lvi0 <- Gtk.listStoreGetValue model i
-    Gtk.listStoreSetValue model i (lvi0 {lviMarked = not (lviMarked lvi0)})
+    let treePath = Gtk.stringToTreePath pathStr
+        g lvi@(ListViewInfo _ Nothing _) = putStrLn "yeah, that's not gonna work" >> return lvi
+        g (ListViewInfo name maybeget marked) = return $ ListViewInfo name maybeget (not marked)
+    ret <- Gtk.treeStoreChangeM model treePath g
+    when (not ret) $ putStrLn "treeStoreChane fail"
     updateGraphInfo
 
 

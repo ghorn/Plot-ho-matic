@@ -12,9 +12,10 @@ import qualified Text.ProtocolBuffers.Header as P'
 
 import PlotTypes
 
-data Tree = Node (String, ExpQ) [Tree]
-          | Leaf String ExpQ
+import Data.Tree
 
+data AccessorTree = ANode (String, ExpQ) [AccessorTree]
+                  | ALeaf String ExpQ
 
 pbPrimMap :: Map Name ExpQ
 pbPrimMap =
@@ -30,7 +31,7 @@ pbPrimMap =
              ]
 
 -- | take a constructor field and return usable stuff
-handleField :: (Name, Type) -> Q Tree
+handleField :: (Name, Type) -> Q AccessorTree
 handleField (name, ConT type') = do
   let safeGetInfo :: Q (Name, [Con])
       safeGetInfo = do
@@ -55,8 +56,7 @@ handleField (name, ConT type') = do
       let con = fromMaybe (error $ "can't find appropriate PbPrim for " ++ show type')
                 (M.lookup type' pbPrimMap)
 
-      return $ Leaf (nameBase name) [| $(con) . $(varE name) |]
-
+      return $ ALeaf (nameBase name) [| $(con) . $(varE name) |]
 ---- handle optional fields
 --handleField prefix x@(name, AppT (ConT con) (ConT type')) = do
 --  (Just maybeName) <- lookupTypeName "Maybe"
@@ -71,11 +71,11 @@ handleField (name, ConT type') = do
 
 -- | Take a constructor with multiple fields, call handleFields on each of them,
 --   assemble the result
-handleConstructor :: ExpQ -> String -> Con -> Q Tree
+handleConstructor :: ExpQ -> String -> Con -> Q AccessorTree
 handleConstructor getter prefix (RecC _ varStrictTypes) = do
   let varTypes = map (\(x,_,z) -> (x,z)) varStrictTypes
   outputs  <- mapM handleField varTypes
-  return $ Node (prefix, getter) outputs
+  return $ ANode (prefix, getter) outputs
 handleConstructor _ _ x = fail $ "\"" ++ show x ++ "\" is not a record syntax constructor"
 
 
@@ -96,9 +96,12 @@ makeAccessors prefix typ = do
   outputs' <- handleConstructor [| id |] prefix constructor
   let cat "" str = str
       cat x y = x ++ "." ++ y
-      f getHigher prefix' (Node (name,get) forest) =
-        concatMap (f [| $get . $getHigher |] (cat prefix' name)) forest
-      f getHigher prefix' (Leaf name get) =
-        [(cat prefix' name, [| $get . $getHigher|])]
-      outputs = f [| id |] "" outputs'
-  listE $ map (\(str,fun) -> [| (str, $fun) |]) outputs
+
+      f :: ExpQ -> String -> AccessorTree -> ExpQ
+      f getHigher prefix' (ANode (name,get) forest) = [| Node (name::String,Nothing) $forestQ |]
+        where
+          forestQ = listE $ map (f [| $get . $getHigher |] (cat prefix' name)) forest
+      f getHigher prefix' (ALeaf name get) = [| Node (fullname::String, Just ($get . $getHigher)) [] |]
+        where
+          fullname = cat prefix' name
+  f [| id |] "" outputs'

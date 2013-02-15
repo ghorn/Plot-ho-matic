@@ -11,6 +11,7 @@ import Control.Concurrent ( MVar )
 import qualified Data.ByteString.Lazy as BSL
 import Data.Sequence ( Seq )
 import Data.Time ( NominalDiffTime )
+import Data.Tree ( Tree )
 import qualified Text.ProtocolBuffers.Header as P'
 
 data XAxisType a = XAxisTime
@@ -18,7 +19,7 @@ data XAxisType a = XAxisTime
                  | XAxisFun (String, a -> PbPrim)
 
 data Channel = forall a. Channel { chanName :: String
-                                 , chanGetters :: [(String, a -> PbPrim)]
+                                 , chanGetters :: Tree (String, Maybe (a -> PbPrim))
                                  , chanSeq :: MVar (Seq (a,Int,NominalDiffTime))
                                  , chanMaxHist :: MVar Int
                                  }

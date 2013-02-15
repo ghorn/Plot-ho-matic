@@ -70,6 +70,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   graphInfoMVar <- CC.newMVar $ GraphInfo { giData = chanseq
                                           , giLen = numToDrawMv
                                           , giXAxis = XAxisCounter
+                                          , giXScaling = LinearScaling
                                           , giYScaling = LinearScaling
                                           , giGetters = []
                                           }
@@ -98,12 +99,24 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   _ <- on xaxisSelector Gtk.changed updateXAxis
 
 
-  -- linear or log scaling on the y axis?
+  -- linear or log scaling on the x and y axis?
+  xscalingSelector <- Gtk.comboBoxNewText
   yscalingSelector <- Gtk.comboBoxNewText
+  mapM_ (Gtk.comboBoxAppendText xscalingSelector) ["linear","logarithmic"]
   mapM_ (Gtk.comboBoxAppendText yscalingSelector) ["linear","logarithmic"]
+  Gtk.comboBoxSetActive xscalingSelector 0
   Gtk.comboBoxSetActive yscalingSelector 0
+  xscalingBox <- labeledWidget "x scaling:" xscalingSelector
   yscalingBox <- labeledWidget "y scaling:" yscalingSelector
-
+  let updateXScaling = do
+        k <- Gtk.comboBoxGetActive xscalingSelector
+        _ <- case k of
+          0 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXScaling = LinearScaling}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXScaling = LogScaling}
+          _ -> error "y scaling should be 0 or 1"
+        return ()
   let updateYScaling = do
         k <- Gtk.comboBoxGetActive yscalingSelector
         _ <- case k of
@@ -113,9 +126,10 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
                \gi -> return $ gi {giYScaling = LogScaling}
           _ -> error "y scaling should be 0 or 1"
         return ()
+  updateXScaling
   updateYScaling
+  _ <- on xscalingSelector Gtk.changed updateXScaling
   _ <- on yscalingSelector Gtk.changed updateYScaling
-
 
   -- create a new tree model
   let mkTreeNode (name,maybeget) = ListViewInfo name maybeget False
@@ -169,12 +183,14 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
   Gtk.set vbox [ Gtk.containerChild := plotLengthBox
-               , Gtk.containerChild := xaxisBox
                , Gtk.containerChild := yscalingBox
+               , Gtk.containerChild := xscalingBox
+               , Gtk.containerChild := xaxisBox
                , Gtk.containerChild := treeview
                , Gtk.boxChildPacking plotLengthBox := Gtk.PackNatural
                , Gtk.boxChildPacking xaxisBox := Gtk.PackNatural
                , Gtk.boxChildPacking yscalingBox := Gtk.PackNatural
+               , Gtk.boxChildPacking xscalingBox := Gtk.PackNatural
 --               , Gtk.boxChildPacking treeview := Gtk.PackNatural
                ]
 

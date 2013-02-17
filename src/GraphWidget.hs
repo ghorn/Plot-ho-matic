@@ -3,8 +3,8 @@
 module GraphWidget ( newGraph ) where
 
 import qualified Control.Concurrent as CC
-import Control.Monad ( when )
-import Data.Maybe ( catMaybes, isJust, fromJust )
+import Control.Monad ( unless )
+import Data.Maybe ( mapMaybe, isJust, fromJust )
 import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
@@ -38,15 +38,15 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
 
   -- mvar with everything the graphs need to plot
-  graphInfoMVar <- CC.newMVar $ GraphInfo { giData = chanseq
-                                          , giLen = 0 -- changed immediately
-                                          , giXAxis = XAxisCounter
-                                          , giXScaling = LinearScaling
-                                          , giYScaling = LinearScaling
-                                          , giXRange = Nothing
-                                          , giYRange = Nothing
-                                          , giGetters = []
-                                          }
+  graphInfoMVar <- CC.newMVar GraphInfo { giData = chanseq
+                                        , giLen = 0 -- changed immediately
+                                        , giXAxis = XAxisCounter
+                                        , giXScaling = LinearScaling
+                                        , giYScaling = LinearScaling
+                                        , giXRange = Nothing
+                                        , giYRange = Nothing
+                                        , giGetters = []
+                                        }
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
                    , Gtk.windowTitle := "I am a graph"
@@ -64,7 +64,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
           Nothing -> do
             putStrLn $ "invalid non-integer range entry: " ++ txt
             Gtk.set plotLength [Gtk.entryText := show (giLen gi)]
-          Just k -> if (k < 0)
+          Just k -> if k < 0
                     then do
                       putStrLn $ "invalid negative range entry: " ++ txt
                       Gtk.set plotLength [Gtk.entryText := show (giLen gi)]
@@ -80,7 +80,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   mapM_ (Gtk.comboBoxAppendText xaxisSelector) ["(counter)","(timestamp)"]
   let f (_,Nothing) = Nothing
       f (x,Just y) = Just (x,y)
-      xaxisGetters = catMaybes $ map f (Tree.flatten changetters)
+      xaxisGetters = mapMaybe f (Tree.flatten changetters)
   mapM_ (Gtk.comboBoxAppendText xaxisSelector. fst) xaxisGetters
   Gtk.comboBoxSetActive xaxisSelector 0
   xaxisBox <- labeledWidget "x axis:" xaxisSelector
@@ -122,7 +122,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
           Nothing -> do
             putStrLn $ "invalid x range entry: " ++ txt
             Gtk.set xRange [Gtk.entryText := "(min,max)"]
-          Just (z0,z1) -> if (z0 >= z1)
+          Just (z0,z1) -> if z0 >= z1
                     then do
                       putStrLn $ "invalid x range entry (min >= max): " ++ txt
                       Gtk.set xRange [Gtk.entryText := "(min,max)"]
@@ -140,7 +140,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
           Nothing -> do
             putStrLn $ "invalid y range entry: " ++ txt
             Gtk.set yRange [Gtk.entryText := "(min,max)"]
-          Just (z0,z1) -> if (z0 >= z1)
+          Just (z0,z1) -> if z0 >= z1
                     then do
                       putStrLn $ "invalid y range entry (min >= max): " ++ txt
                       Gtk.set yRange [Gtk.entryText := "(min,max)"]
@@ -251,7 +251,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
         g lvi@(ListViewInfo _ Nothing _) = putStrLn "yeah, that's not gonna work" >> return lvi
         g (ListViewInfo name maybeget marked) = return $ ListViewInfo name maybeget (not marked)
     ret <- Gtk.treeStoreChangeM model treePath g
-    when (not ret) $ putStrLn "treeStoreChane fail"
+    unless ret $ putStrLn "treeStoreChange fail"
     updateGraphInfo
 
 

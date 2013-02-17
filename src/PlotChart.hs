@@ -18,7 +18,7 @@ data AxisScaling = LogScaling
                  | LinearScaling
 
 -- what the graph should draw
-data GraphInfo a = GraphInfo { giData :: (CC.MVar (S.Seq (a,Int,NominalDiffTime)))
+data GraphInfo a = GraphInfo { giData :: CC.MVar (S.Seq (a,Int,NominalDiffTime))
                              , giLen :: Int
                              , giXAxis :: XAxisType a
                              , giXScaling :: AxisScaling
@@ -48,7 +48,7 @@ updateCanvas :: Gtk.WidgetClass widget => CC.MVar (GraphInfo a) -> widget -> IO 
 updateCanvas graphInfoMVar canvas = do
   gi <- CC.readMVar graphInfoMVar
   datalog <- CC.readMVar (giData gi)
-  let shortLog = S.drop (S.length datalog - (giLen gi)) datalog
+  let shortLog = S.drop (S.length datalog - giLen gi) datalog
       f (name,getter) = (name,fmap (\(x,_,_) -> pbpToFrac (getter x)) shortLog :: Seq (Maybe Double))
       namePcs = map f (giGetters gi)
 

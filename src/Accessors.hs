@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language TemplateHaskell #-}
 {-# Language ExistentialQuantification #-}
-{-# Language MultiWayIf #-}
 
 module Accessors ( makeAccessors ) where
 
@@ -49,9 +48,9 @@ handleField (ConT type') = do
       safeGetInfo = do
         info <- reify type'
         case info of
-          (TyConI (DataD _ _ _ [constructor] _ )) -> return ([constructor])
-          (TyConI (NewtypeD _ _ _ constructor _ )) -> return ([constructor])
-          (TyConI (DataD _ _ _ constructors _ )) -> return (constructors)
+          (TyConI (DataD _ _ _ [constructor] _ )) -> return [constructor]
+          (TyConI (NewtypeD _ _ _ constructor _ )) -> return [constructor]
+          (TyConI (DataD _ _ _ constructors _ )) -> return constructors
           d -> error $ "handleField: safeGetInfo got unsafe info: " ++ show d
   constructors <- safeGetInfo
   case constructors of
@@ -68,10 +67,10 @@ handleField (ConT type') = do
 
       return (APrim con)
 -- handle optional fields
-handleField x@(AppT (ConT con) (ConT type')) = do
-  if | con == ''Maybe -> fmap AMaybe $ handleField (ConT type')
-     | con == ''P'.Seq -> fmap ASeq $ handleField (ConT type')
-     | otherwise -> error $ "handleField (AppT ...): can't handle constructor " ++ show con ++ " in " ++ show x
+handleField x@(AppT (ConT con) (ConT type'))
+  | con == ''Maybe  = fmap AMaybe $ handleField (ConT type')
+  | con == ''P'.Seq = fmap ASeq   $ handleField (ConT type')
+  | otherwise = error $ "handleField (AppT ...): can't handle constructor "++show con++" in "++show x
 handleField x = error $ "handleField _: unhandled case: " ++ show x
 
 

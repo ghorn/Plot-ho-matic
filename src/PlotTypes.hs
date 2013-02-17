@@ -35,7 +35,7 @@ data PbTree a = PbfGetter (a -> PbPrim)
 pbTreeToTree :: String -> PbTree a -> Tree (String, Maybe (a -> PbPrim))
 pbTreeToTree name (PbfGetter get) = Node (name, Just get) []
 pbTreeToTree name (PbfStruct stuff) =
-  Node (name, Nothing) (map (\(n,pbf) -> pbTreeToTree n pbf) stuff)
+  Node (name, Nothing) (map (uncurry pbTreeToTree) stuff)
 
 data PbPrim = PbDouble Double
             | PbFloat Float

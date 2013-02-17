@@ -60,7 +60,7 @@ newChannelWidget channels graphWindowsToBeKilled = do
   -- create a new tree model
   let toListView ch = do
         k <- CC.readMVar $ chanMaxHist ch
-        return $ ListView { lvChan = ch, lvMaxHist = k }
+        return ListView { lvChan = ch, lvMaxHist = k }
   model <- mapM toListView channels >>= Gtk.listStoreNew
   treeview <- Gtk.treeViewNewWithModel model
   Gtk.treeViewSetHeadersVisible treeview True
@@ -86,7 +86,7 @@ newChannelWidget channels graphWindowsToBeKilled = do
   Gtk.cellLayoutSetAttributes col1 renderer1 model $ \lv -> [ Gtk.cellText := show (lvMaxHist lv)
                                                             , Gtk.cellTextEditable := True
                                                             ]
-  Gtk.cellLayoutSetAttributes col2 renderer2 model $ \_ -> [ Gtk.cellToggleActive := False]
+  Gtk.cellLayoutSetAttributes col2 renderer2 model $ const [ Gtk.cellToggleActive := False]
 
   
   _ <- Gtk.treeViewAppendColumn treeview col0
@@ -113,7 +113,7 @@ newChannelWidget channels graphWindowsToBeKilled = do
         putStrLn $ "invalid non-integer range entry: " ++ txt
         k0 <- CC.readMVar $ chanMaxHist (lvChan lv)
         Gtk.listStoreSetValue model i (lv {lvMaxHist = k0})
-      Just k -> if (k < 0)
+      Just k -> if k < 0
                 then do
                   putStrLn $ "invalid negative range entry: " ++ txt
                   k0 <- CC.readMVar $ chanMaxHist (lvChan lv)

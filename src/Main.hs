@@ -6,14 +6,15 @@
 module Main ( main ) where
 
 import qualified Control.Concurrent as CC
-import qualified Data.Sequence as S
+import Data.Sequence ( (<|) )
 import Data.Sequence ( (|>) )
+import qualified Data.Sequence as S
 import Data.Time ( UTCTime, NominalDiffTime, getCurrentTime, diffUTCTime )
 import qualified System.Remote.Monitoring as EKG
 
 import Plotter ( runPlotter )
 import Accessors ( makeAccessors )
-import PlotTypes ( Channel(..) )
+import PlotTypes ( Channel(..), pbTreeToTree )
 
 data Xyz = MkXyz { x_ :: Double
                  , y_ :: Double
@@ -22,9 +23,17 @@ data Xyz = MkXyz { x_ :: Double
 data Axyz = MkAxyz { a_ :: Double
                    , xyz_ :: Xyz
                    }
-
 incrementAxyz :: Axyz -> Axyz
-incrementAxyz (MkAxyz a _) = MkAxyz (a+0.2) (MkXyz (sin a) (cos a) (sin a * cos a))
+incrementAxyz (MkAxyz a _) = MkAxyz (a+0.2) xyz
+  where
+    xyz = MkXyz (sin a) (cos a) (sin a * cos a)
+--data Axyz = MkAxyz { a_ :: Double
+--                   , xyz_ :: S.Seq Xyz
+--                   }
+--incrementAxyz :: Axyz -> Axyz
+--incrementAxyz (MkAxyz a xyzs) = MkAxyz (a+0.2) (S.take 5 (xyz <| xyzs))
+--  where
+--    xyz = MkXyz (sin a) (cos a) (sin a * cos a)
 
 incrementXyz :: Xyz -> Xyz
 incrementXyz (MkXyz a _ _) = MkXyz (a+0.3) (2 * sin a) (3 * cos a)
@@ -59,7 +68,8 @@ main = do
   chan0 <- CC.newChan
   chan1 <- CC.newChan
   
-  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (MkXyz 1 2 3)-- 4)
+--  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (S.fromList [MkXyz 1 2 3])
+  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (MkXyz 1 2 3)
   producerTid1 <- CC.forkIO $ runProducer 60000 incrementXyz chan1 $ MkXyz 0 2 3
 
   maxNumMV0 <- CC.newMVar (10000 :: Int)
@@ -71,11 +81,11 @@ main = do
   serverTid0 <- CC.forkIO $ serverLoop chan0 0 (receiveNewMessage time0 maxNumMV0 seqmv0)
   serverTid1 <- CC.forkIO $ serverLoop chan1 0 (receiveNewMessage time0 maxNumMV1 seqmv1)
 
-  let accessors0 = $(makeAccessors "positionPlus" ''Axyz)
-      accessors1 = $(makeAccessors "position" ''Xyz)
+  let accessors0 = pbTreeToTree "posPlus" $(makeAccessors ''Axyz)
+      accessors1 = pbTreeToTree "pos" $(makeAccessors ''Xyz)
 
       c0 = Channel "positionPlus" accessors0 seqmv0 maxNumMV0
-      c1 = Channel "position" accessors1 seqmv1 maxNumMV1
+      c1 = Channel "position"     accessors1 seqmv1 maxNumMV1
       channels = [ c0
                  , c1
                  ]

@@ -17,15 +17,15 @@ data AccessorTree = APrim ExpQ
                   | ASeq AccessorTree
                   | AMaybe AccessorTree
 
-atToPbf :: ExpQ -> AccessorTree -> ExpQ
-atToPbf getDouble (APrim pbCon) = [| PbfGetter ($pbCon . $getDouble) |]
-atToPbf getStruct (AStruct forest) = [| PbfStruct (zip strNames $forestQ) |]
+atToPbt :: ExpQ -> AccessorTree -> ExpQ
+atToPbt getDouble (APrim pbCon) = [| PbtGetter ($pbCon . $getDouble) |]
+atToPbt getStruct (AStruct forest) = [| PbtStruct (zip strNames $forestQ) |]
   where
-    forestQ = listE $ zipWith (\n t -> atToPbf [| $(varE n) . $getStruct |] t) names trees
+    forestQ = listE $ zipWith (\n t -> atToPbt [| $(varE n) . $getStruct |] t) names trees
     (names,trees) = unzip forest
     strNames = map nameBase names
-atToPbf getSeq   (ASeq   pbf) = [| PbfSeq   $getSeq   $(atToPbf [| id |] pbf) |]
-atToPbf getMaybe (AMaybe pbf) = [| PbfMaybe $getMaybe $(atToPbf [| id |] pbf) |]
+atToPbt getSeq   (ASeq   pbf) = [| PbtSeq   $getSeq   $(atToPbt [| id |] pbf) |]
+atToPbt getMaybe (AMaybe pbf) = [| PbtMaybe $getMaybe $(atToPbt [| id |] pbf) |]
 
 
 pbPrimMap :: Map Name ExpQ
@@ -98,4 +98,4 @@ makeAccessors typ = do
   TyConI (DataD _ _typeName _ [constructor] _ ) <- safeGetInfo
 
   outputs' <- handleConstructor constructor
-  atToPbf [| id |] outputs'
+  atToPbt [| id |] outputs'

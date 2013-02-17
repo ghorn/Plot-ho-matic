@@ -26,16 +26,15 @@ data Channel = forall a. Channel { chanName :: String
                                  , chanMaxHist :: MVar Int
                                  }
 
-data PbTree a = PbfGetter (a -> PbPrim)
-              | PbfStruct [(String,PbTree a)]
-              | forall b. PbfSeq   (a -> Seq   b) (PbTree b)
-              | forall b. PbfMaybe (a -> Maybe b) (PbTree b)
+data PbTree a = PbtGetter (a -> PbPrim)
+              | PbtStruct [(String,PbTree a)]
+              | forall b. PbtSeq   (a -> Seq   b) (PbTree b)
+              | forall b. PbtMaybe (a -> Maybe b) (PbTree b)
 
 
 pbTreeToTree :: String -> PbTree a -> Tree (String, Maybe (a -> PbPrim))
-pbTreeToTree name (PbfGetter get) = Node (name, Just get) []
-pbTreeToTree name (PbfStruct stuff) =
-  Node (name, Nothing) (map (uncurry pbTreeToTree) stuff)
+pbTreeToTree name (PbtGetter get) = Node (name, Just get) []
+pbTreeToTree name (PbtStruct stuff) = Node (name, Nothing) (map (uncurry pbTreeToTree) stuff)
 
 data PbPrim = PbDouble Double
             | PbFloat Float

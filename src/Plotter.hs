@@ -1,19 +1,52 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module Plotter ( runPlotter ) where
+module Plotter ( newChannel, runPlotter, makeAccessors ) where
 
 import qualified Control.Concurrent as CC
+import Data.Sequence ( (|>) )
+import qualified Data.Sequence as S
+import Data.Time ( getCurrentTime, diffUTCTime )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 
-import PlotTypes ( Channel(..) )
+import Accessors ( makeAccessors )
+import PlotTypes ( Channel(..), PbTree, pbTreeToTree )
 import GraphWidget ( newGraph )
 
 data ListView = ListView { lvChan :: Channel
                          , lvMaxHist :: Int
                          }
+
+newChannel :: String -> PbTree a -> IO (Channel, CC.Chan a)
+newChannel name pbTree = do
+  time0 <- getCurrentTime
+  
+  seqChan <- CC.newChan
+  seqMv <- CC.newMVar S.empty
+  maxHistMv <- CC.newMVar (10000 :: Int)
+
+  let serverLoop k = do
+              -- wait until a new message is written to the Chan
+        newMsg <- CC.readChan seqChan
+        -- grab the timestamp
+        time <- getCurrentTime
+        -- append this to the Seq in the MVar, dropping the excess old messages
+        maxNum <- CC.readMVar maxHistMv
+        let f seq0 = return $ S.drop (S.length seq0 + 1 - maxNum) (seq0 |> (newMsg, k, diffUTCTime time time0))
+        CC.modifyMVar_ seqMv f
+        -- loop forever
+        serverLoop (k+1)
+  
+  serverTid <- CC.forkIO $ serverLoop 0
+  let retChan = Channel { chanName = name
+                        , chanGetters = pbTreeToTree name pbTree
+                        , chanSeq = seqMv
+                        , chanMaxHist = maxHistMv
+                        , chanServerThreadId = serverTid
+                        }
+  return (retChan, seqChan)
 
 runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
 runPlotter channels backgroundThreadsToKill = do
@@ -31,6 +64,7 @@ runPlotter channels backgroundThreadsToKill = do
         gws <- CC.readMVar graphWindowsToBeKilled
         mapM_ Gtk.widgetDestroy gws
         mapM_ CC.killThread backgroundThreadsToKill
+        mapM_ (CC.killThread . chanServerThreadId) channels
         Gtk.mainQuit
   _ <- Gtk.onDestroy win killEverything
 

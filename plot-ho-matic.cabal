@@ -18,22 +18,20 @@ cabal-version:       >=1.8
 
 executable plot-ho-matic
   hs-source-dirs:    src
-  main-is:           Main.hs
+  main-is:           Example.hs
 --  other-modules:
   build-depends:     base >= 4.5.0 && < 4.7,
+                     transformers,
                      protocol-buffers,
-                     random,
-                     bytestring,
                      containers,
-                     template-haskell,
-                     OpenGL,
-                     glib,
+                     time,
+                     bytestring,
+                     Chart,
                      gtk,
                      data-accessor,
-                     Chart,
-                     time,
-                     transformers,
-                     ekg
+                     glib,
+                     template-haskell
+--                     ekg
 
 --  if os(OSX)
 --    cpp-options:     -DOSX

@@ -10,7 +10,7 @@ module PlotTypes ( Channel(..)
                  , pbTreeToTree
                  ) where
 
-import Control.Concurrent ( MVar )
+import Control.Concurrent ( MVar, ThreadId )
 import qualified Data.ByteString.Lazy as BSL
 import Data.Sequence ( Seq )
 import Data.Time ( NominalDiffTime )
@@ -28,6 +28,7 @@ data Channel = forall a. Channel { chanName :: String
                                  , chanGetters :: Tree (String, Maybe (a -> PbPrim))
                                  , chanSeq :: MVar (Seq (a,Int,NominalDiffTime))
                                  , chanMaxHist :: MVar Int
+                                 , chanServerThreadId :: ThreadId
                                  }
 
 data PbTree a where

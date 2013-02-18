@@ -24,8 +24,8 @@ atToPbt getStruct (AStruct forest) = [| PbtStruct (zip strNames $forestQ) |]
     forestQ = listE $ zipWith (\n t -> atToPbt [| $(varE n) . $getStruct |] t) names trees
     (names,trees) = unzip forest
     strNames = map nameBase names
-atToPbt getSeq   (ASeq   pbf) = [| PbtSeq   $getSeq   $(atToPbt [| id |] pbf) |]
-atToPbt getMaybe (AMaybe pbf) = [| PbtMaybe $getMaybe $(atToPbt [| id |] pbf) |]
+atToPbt getSeq   (ASeq   pbf) = [| PbtFunctor PbSeq   $getSeq   $(atToPbt [| id |] pbf) |]
+atToPbt getMaybe (AMaybe pbf) = [| PbtFunctor PbMaybe $getMaybe $(atToPbt [| id |] pbf) |]
 
 
 pbPrimMap :: Map Name ExpQ

@@ -77,7 +77,8 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
 
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
-  mapM_ (Gtk.comboBoxAppendText xaxisSelector) ["(counter)","(timestamp)"]
+  let xaxisSelectorStrings = ["(counter)","(static counter)","(timestamp)"]
+  mapM_ (Gtk.comboBoxAppendText xaxisSelector) xaxisSelectorStrings
   let f (_,Nothing) = Nothing
       f (x,Just y) = Just (x,y)
       xaxisGetters = mapMaybe f (Tree.flatten changetters)
@@ -91,9 +92,11 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
           0 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxis = XAxisCounter}
           1 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxis = XAxisStaticCounter}
+          2 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxis = XAxisTime}
           _ -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisFun (xaxisGetters !! (k-2))}
+               \gi -> return $ gi {giXAxis = XAxisFun (xaxisGetters !! (k-(length xaxisSelectorStrings)))}
         return ()
   updateXAxis
   _ <- on xaxisSelector Gtk.changed updateXAxis

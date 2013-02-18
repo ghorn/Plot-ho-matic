@@ -6,13 +6,13 @@ import qualified Control.Concurrent as CC
 import Data.Accessor
 import qualified Data.Foldable as F
 import Data.Maybe ( mapMaybe )
-import Data.Sequence ( Seq )
+import Data.Sequence ( Seq, ViewR(..) )
 import qualified Data.Sequence as S
 import Data.Time ( NominalDiffTime )
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
  
-import PlotTypes ( XAxisType(..), PbPrim, pbpToFrac )
+import PlotTypes ( XAxisType(..), PbPrim(..) )
 
 data AxisScaling = LogScaling
                  | LinearScaling
@@ -44,16 +44,39 @@ newChartCanvas graphInfoMVar = do
     Gtk.priorityDefaultIdle animationWaitTime
   return chartCanvas
 
+pbpToFrac :: Fractional a => PbPrim -> Maybe a
+pbpToFrac (PbDouble c)     = Just $ realToFrac c
+pbpToFrac (PbFloat c)      = Just $ realToFrac c
+pbpToFrac (PbInt32 c)      = Just $ realToFrac c
+pbpToFrac (PbInt64 c)      = Just $ realToFrac c
+pbpToFrac (PbWord32 c)     = Just $ realToFrac c
+pbpToFrac (PbWord64 c)     = Just $ realToFrac c
+pbpToFrac (PbBool c)       = Just $ (\x -> if x then 1 else 0) c
+pbpToFrac (PbUtf8 _)       = Nothing
+pbpToFrac (PbByteString _) = Nothing
+pbpToFrac (PbSeq _) = Nothing
+pbpToFrac (PbMaybe _) = Nothing
+
 updateCanvas :: Gtk.WidgetClass widget => CC.MVar (GraphInfo a) -> widget -> IO Bool
 updateCanvas graphInfoMVar canvas = do
   gi <- CC.readMVar graphInfoMVar
   datalog <- CC.readMVar (giData gi)
   let shortLog = S.drop (S.length datalog - giLen gi) datalog
-      f (name,getter) = (name,fmap (\(x,_,_) -> pbpToFrac (getter x)) shortLog :: Seq (Maybe Double))
-      namePcs = map f (giGetters gi)
+      f (name,getter) = (name,fmap (\(x,_,_) -> (getter x)) shortLog :: Seq PbPrim)
+
+      namePcs' :: [(String, Seq PbPrim)]
+      namePcs' = map f (giGetters gi)
+
+      g :: (String,Seq PbPrim) -> (String, Seq (Maybe Double))
+      g (name,xs) = case S.viewr xs of
+        EmptyR -> (name, S.empty)
+        _ :> (PbSeq xs') -> (name, fmap pbpToFrac xs')
+        _ -> (name, fmap pbpToFrac xs)
+      namePcs = map g namePcs'
 
       (xaxisName, xaxisVals) = case giXAxis gi of
         XAxisCounter -> ("count", fmap (\(_,k,_) -> Just (fromIntegral k)) shortLog)
+        XAxisStaticCounter -> ("static count", fmap Just $ S.fromList $ take (S.length shortLog) [0..])
         XAxisTime -> ("msg receive timestamp [s]", fmap (\(_,_,t) -> Just (realToFrac t)) shortLog)
         XAxisFun (name,getx) -> (name, fmap (\(x,_,_) -> pbpToFrac (getx x)) shortLog)
   (width, height) <- Gtk.widgetGetSize canvas
@@ -64,9 +87,9 @@ updateCanvas graphInfoMVar canvas = do
   _ <- Gtk.renderWithDrawable win $ Chart.runCRender (Chart.render myGraph sz) Chart.vectorEnv
   return True
 
-displayChart :: (F.Foldable t, Chart.PlotValue a, Show a, RealFloat a) =>
+displayChart :: (Chart.PlotValue a, Show a, RealFloat a) =>
                 (AxisScaling, AxisScaling) -> (Maybe (a,a),Maybe (a,a)) -> String ->
-                t (Maybe a) -> [(String, t (Maybe a))] -> Chart.Renderable ()
+                Seq (Maybe a) -> [(String, Seq (Maybe a))] -> Chart.Renderable ()
 displayChart (xScaling,yScaling) (xRange,yRange) xaxisName xaxis namePcs = Chart.toRenderable layout
   where
     f (Just x, Just y)  = Just (x,y)

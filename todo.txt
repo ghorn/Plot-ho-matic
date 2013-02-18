@@ -1,11 +1,3 @@
 plotter to do:
 
-channel window:
-  user selectable history length
-
-plot window:
-  use tree instead of lists
-
 figure out how to use RTS to display the amount of memory being used
-
-show NMPC horizon

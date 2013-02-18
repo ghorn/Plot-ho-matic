@@ -21,19 +21,13 @@ data Xyz = MkXyz { x_ :: Double
                  , z_ :: Double
                  }
 data Axyz = MkAxyz { a_ :: Double
+                   , xyzList_ :: S.Seq Xyz
                    , xyz_ :: Xyz
                    }
 incrementAxyz :: Axyz -> Axyz
-incrementAxyz (MkAxyz a _) = MkAxyz (a+0.2) xyz
+incrementAxyz (MkAxyz a xyzs _) = MkAxyz (a+0.2) (S.take 5 (xyz <| xyzs)) xyz
   where
     xyz = MkXyz (sin a) (cos a) (sin a * cos a)
---data Axyz = MkAxyz { a_ :: Double
---                   , xyz_ :: S.Seq Xyz
---                   }
---incrementAxyz :: Axyz -> Axyz
---incrementAxyz (MkAxyz a xyzs) = MkAxyz (a+0.2) (S.take 5 (xyz <| xyzs))
---  where
---    xyz = MkXyz (sin a) (cos a) (sin a * cos a)
 
 incrementXyz :: Xyz -> Xyz
 incrementXyz (MkXyz a _ _) = MkXyz (a+0.3) (2 * sin a) (3 * cos a)
@@ -68,8 +62,7 @@ main = do
   chan0 <- CC.newChan
   chan1 <- CC.newChan
   
---  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (S.fromList [MkXyz 1 2 3])
-  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (MkXyz 1 2 3)
+  producerTid0 <- CC.forkIO $ runProducer 50000 incrementAxyz chan0 $ MkAxyz 7 (S.fromList [MkXyz 1 2 3]) (MkXyz 1 2 3)
   producerTid1 <- CC.forkIO $ runProducer 60000 incrementXyz chan1 $ MkXyz 0 2 3
 
   maxNumMV0 <- CC.newMVar (10000 :: Int)

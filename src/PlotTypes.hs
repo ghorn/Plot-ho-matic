@@ -73,3 +73,4 @@ data PbPrim = PbDouble Double
             | PbByteString BSL.ByteString
             | PbSeq (Seq PbPrim)
             | PbMaybe (Maybe PbPrim)
+            | PbEnum (Int,String)

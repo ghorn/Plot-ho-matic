@@ -40,6 +40,15 @@ pbPrimMap =
              , (''P'.Utf8      , [| PbUtf8 |])
              , (''P'.ByteString, [| PbByteString |])
              ]
+getPbPrim :: Name -> Q (Maybe ExpQ)
+getPbPrim name = case M.lookup name pbPrimMap of
+  x@(Just _) -> return x
+  Nothing -> do
+    isEnum <- isInstance ''Enum [ConT name]
+    if isEnum
+      then return $ Just [| PbEnum . (\x -> (fromEnum x, show x)) |]
+      else return Nothing
+
 
 -- | take a constructor field and return usable stuff
 handleField :: Type -> Q AccessorTree
@@ -61,9 +70,10 @@ handleField (ConT type') = do
       return $ AStruct (zip names outputs)
 
     -- everything else
-    _ -> do
-      let con = fromMaybe (error $ "can't find appropriate PbPrim for " ++ show type')
-                (M.lookup type' pbPrimMap)
+    xx -> do
+      maybePrim <- getPbPrim type'
+      let msg = "can't find appropriate PbPrim for " ++ show type' ++ "\n" ++ show xx
+          con = fromMaybe (error msg) maybePrim
 
       return (APrim con)
 -- handle optional fields

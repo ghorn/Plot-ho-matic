@@ -56,6 +56,7 @@ pbpToFrac (PbUtf8 _)       = Nothing
 pbpToFrac (PbByteString _) = Nothing
 pbpToFrac (PbSeq _) = Nothing
 pbpToFrac (PbMaybe _) = Nothing
+pbpToFrac (PbEnum (k,_)) = Just $ realToFrac k
 
 updateCanvas :: Gtk.WidgetClass widget => CC.MVar (GraphInfo a) -> widget -> IO Bool
 updateCanvas graphInfoMVar canvas = do

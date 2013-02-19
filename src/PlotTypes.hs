@@ -25,7 +25,7 @@ data XAxisType a = XAxisTime
                  | XAxisFun (String, a -> PbPrim)
 
 data Channel = forall a. Channel { chanName :: String
-                                 , chanGetters :: Tree (String, Maybe (a -> PbPrim))
+                                 , chanGetters :: Tree (String, String, Maybe (a -> PbPrim))
                                  , chanSeq :: MVar (Seq (a,Int,NominalDiffTime))
                                  , chanMaxHist :: MVar Int
                                  , chanServerThreadId :: ThreadId
@@ -40,14 +40,18 @@ data PbTree' a = PbtGetter' (a -> PbPrim)
                | PbtStruct' [(String,PbTree' a)]
                | PbtFunctor' (PbTree' a)
 
+pbTreeToTree :: String -> PbTree a -> Tree (String, String, Maybe (a -> PbPrim))
+pbTreeToTree name tree = pbTreeToTree' "" name (please tree)
 
-pbTreeToTree :: String -> PbTree a -> Tree (String, Maybe (a -> PbPrim))
-pbTreeToTree name tree = pbTreeToTree' name (please tree)
+cat :: String -> String -> String
+cat [] y = y
+cat x y = x ++ "." ++ y
 
-pbTreeToTree' :: String -> PbTree' a -> Tree (String, Maybe (a -> PbPrim))
-pbTreeToTree' name (PbtGetter' get) = Node (name, Just get) []
-pbTreeToTree' name (PbtStruct' stuff) = Node (name, Nothing) (map (uncurry pbTreeToTree') stuff)
-pbTreeToTree' name (PbtFunctor' tree) = pbTreeToTree' ("["++name++"]") tree
+pbTreeToTree' :: String -> String -> PbTree' a -> Tree (String, String, Maybe (a -> PbPrim))
+pbTreeToTree' prefix name (PbtGetter' get) = Node (name, cat prefix name, Just get) []
+pbTreeToTree' prefix name (PbtStruct' stuff) =
+  Node (name, cat prefix name, Nothing) (map (uncurry (pbTreeToTree' (cat prefix name))) stuff)
+pbTreeToTree' prefix name (PbtFunctor' tree) = pbTreeToTree' prefix ("["++name++"]") tree
 
 please :: PbTree a -> PbTree' a
 please = f Identity runIdentity

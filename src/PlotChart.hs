@@ -115,7 +115,7 @@ displayChart (xScaling,yScaling) (xRange,yRange) xaxisName xaxis namePcs = Chart
         Nothing -> id
         Just range -> Chart.layout1_left_axis .> Chart.laxis_generate ^= Chart.scaledAxis Chart.defaultLinearAxis range
 
-    layout = Chart.layout1_title ^= "Wooo"
+    layout = Chart.layout1_title ^= "Wooo, Party Graph!"
              $ Chart.layout1_plots ^= map (Left . Chart.toPlot) allLines
              $ Chart.layout1_bottom_axis .> Chart.laxis_title ^= xaxisName
              $ xscaleFun

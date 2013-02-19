@@ -15,6 +15,7 @@ import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
 import PlotChart ( GraphInfo(..), AxisScaling(..), newChartCanvas )
 
 data ListViewInfo a = ListViewInfo { lviName :: String
+                                   , lviFullName :: String
                                    , lviGetter :: Maybe (a -> PbPrim)
                                    , lviMarked :: Bool
                                    }
@@ -34,7 +35,7 @@ labeledWidget name widget = do
 
 -- make a new graph window
 newGraph :: Channel -> IO Gtk.Window
-newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
+newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
 
   -- mvar with everything the graphs need to plot
@@ -49,7 +50,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
                                         }
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
-                   , Gtk.windowTitle := "I am a graph"
+                   , Gtk.windowTitle := chanName chan
                    ]
 
   -- how many to show?
@@ -79,8 +80,8 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   xaxisSelector <- Gtk.comboBoxNewText
   let xaxisSelectorStrings = ["(counter)","(static counter)","(timestamp)"]
   mapM_ (Gtk.comboBoxAppendText xaxisSelector) xaxisSelectorStrings
-  let f (_,Nothing) = Nothing
-      f (x,Just y) = Just (x,y)
+  let f (_,_,Nothing) = Nothing
+      f (_,x,Just y) = Just (x,y)
       xaxisGetters = mapMaybe f (Tree.flatten changetters)
   mapM_ (Gtk.comboBoxAppendText xaxisSelector. fst) xaxisGetters
   Gtk.comboBoxSetActive xaxisSelector 0
@@ -213,7 +214,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   _ <- on yScalingSelector Gtk.changed updateYScaling
 
   -- create a new tree model
-  let mkTreeNode (name,maybeget) = ListViewInfo name maybeget False
+  let mkTreeNode (name,fullName,maybeget) = ListViewInfo name fullName maybeget False
   model <- Gtk.treeStoreNew [fmap mkTreeNode changetters]
   treeview <- Gtk.treeViewNewWithModel model
 
@@ -242,7 +243,7 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   let -- update the graph information
       updateGraphInfo = do
         lvis <- Gtk.treeStoreGetTree model [0]
-        let newGetters = [(lviName lvi, fromJust $ lviGetter lvi) | lvi <- Tree.flatten lvis, lviMarked lvi, isJust (lviGetter lvi)]
+        let newGetters = [(lviFullName lvi, fromJust $ lviGetter lvi) | lvi <- Tree.flatten lvis, lviMarked lvi, isJust (lviGetter lvi)]
             
         _ <- CC.modifyMVar_ graphInfoMVar (\gi0 -> return $ gi0 { giGetters = newGetters })
         return ()
@@ -251,8 +252,8 @@ newGraph (Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     -- toggle the check mark
     let treePath = Gtk.stringToTreePath pathStr
-        g lvi@(ListViewInfo _ Nothing _) = putStrLn "yeah, that's not gonna work" >> return lvi
-        g (ListViewInfo name maybeget marked) = return $ ListViewInfo name maybeget (not marked)
+        g lvi@(ListViewInfo _ _ Nothing _) = putStrLn "yeah, that's not gonna work" >> return lvi
+        g lvi = return $ lvi {lviMarked = not (lviMarked lvi)}
     ret <- Gtk.treeStoreChangeM model treePath g
     unless ret $ putStrLn "treeStoreChange fail"
     updateGraphInfo

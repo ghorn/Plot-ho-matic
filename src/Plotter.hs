@@ -69,9 +69,11 @@ runPlotter channels backgroundThreadsToKill = do
   _ <- Gtk.onDestroy win killEverything
 
   --------------- main widget -----------------
-  -- so i don't forget how to do this:
-  buttonClear <- Gtk.buttonNewWithLabel "this does nothing"
-  _ <- Gtk.onClicked buttonClear $ putStrLn "I swear, it doesn't do anything"
+  -- button to clear history
+  buttonClear <- Gtk.buttonNewWithLabel "clear history"
+  _ <- Gtk.onClicked buttonClear $ do
+    let clearChan (Channel {chanSeq=cs}) = CC.swapMVar cs S.empty >> return ()
+    mapM_ clearChan channels
 
   -- list of channels
   chanWidget <- newChannelWidget channels graphWindowsToBeKilled

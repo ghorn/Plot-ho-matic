@@ -37,8 +37,15 @@ main = do
 --                  , ekgTid
                   ]
 
+withContext :: (ZMQ.Context -> IO a) -> IO a
+#if OSX
+withContext = ZMQ.withContext
+#else
+withContext = ZMQ.withContext 1
+#endif
+
 sub :: (PB.Wire a, PB.ReflectDescriptor a) => String -> CC.Chan a -> IO ()
-sub ip chan = ZMQ.withContext 1 $ \context -> do
+sub ip chan = withContext $ \context -> do
 #if OSX
   let receive = ZMQ.receive
 #else

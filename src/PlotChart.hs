@@ -11,7 +11,7 @@ import qualified Data.Sequence as S
 import Data.Time ( NominalDiffTime )
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
- 
+
 import PlotTypes ( XAxisType(..), PbPrim(..) )
 
 data AxisScaling = LogScaling
@@ -58,28 +58,42 @@ pbpToFrac (PbSeq _) = Nothing
 pbpToFrac (PbMaybe x) = x >>= pbpToFrac
 pbpToFrac (PbEnum (k,_)) = Just $ realToFrac k
 
+-- convert Seq PbPrim to Seq (Maybe Double)
+getSeq :: Seq PbPrim -> Seq (Maybe Double)
+getSeq xs = case S.viewr xs of
+  -- if it's empty do nothing
+  EmptyR -> S.empty
+  -- otherwise examine the first element
+  -- if the first element is a sequence, we'll plot the embedded sequence, not the history
+  _ :> (PbSeq xs') -> getSeq xs'
+  -- if it's a primitive, map pbpToFrac over the list
+  _ -> fmap pbpToFrac xs
+
+
 updateCanvas :: Gtk.WidgetClass widget => CC.MVar (GraphInfo a) -> widget -> IO Bool
 updateCanvas graphInfoMVar canvas = do
   gi <- CC.readMVar graphInfoMVar
   datalog <- CC.readMVar (giData gi)
-  let shortLog = S.drop (S.length datalog - giLen gi) datalog
+  let -- drop values that are in history but are not to be plotted
+      shortLog = S.drop (S.length datalog - giLen gi) datalog
       f (name,getter) = (name,fmap (\(x,_,_) -> (getter x)) shortLog :: Seq PbPrim)
 
+      -- convert to list of (name,Seq PbPrim)
       namePcs' :: [(String, Seq PbPrim)]
       namePcs' = map f (giGetters gi)
 
-      g :: (String,Seq PbPrim) -> (String, Seq (Maybe Double))
-      g (name,xs) = case S.viewr xs of
-        EmptyR -> (name, S.empty)
-        _ :> (PbSeq xs') -> (name, fmap pbpToFrac xs')
-        _ -> (name, fmap pbpToFrac xs)
-      namePcs = map g namePcs'
+      -- convert Seq PbPrim to [Maybe Double]
+      namePcs = map (\(name,xs) -> (name, getSeq xs)) namePcs'
 
+      xaxisVals :: [Maybe Double]
       (xaxisName, xaxisVals) = case giXAxis gi of
-        XAxisCounter -> ("count", fmap (\(_,k,_) -> Just (fromIntegral k)) shortLog)
-        XAxisStaticCounter -> ("static count", fmap Just $ S.fromList $ take (S.length shortLog) [0..])
-        XAxisTime -> ("msg receive timestamp [s]", fmap (\(_,_,t) -> Just (realToFrac t)) shortLog)
-        XAxisFun (name,getx) -> (name, fmap (\(x,_,_) -> pbpToFrac (getx x)) shortLog)
+        XAxisCounter ->
+          ("count", map (\(_,k,_) -> Just (fromIntegral k)) (F.toList shortLog))
+        XAxisStaticCounter -> ("static count", map Just [0..])
+        XAxisTime ->
+          ("msg receive timestamp [s]", map (\(_,_,t) -> Just (realToFrac t)) (F.toList shortLog))
+        XAxisFun (name,getx) ->
+          (name, F.toList $ getSeq $ fmap (\(x,_,_) -> getx x) shortLog)
   (width, height) <- Gtk.widgetGetSize canvas
   let sz = (fromIntegral width,fromIntegral height)
   win <- Gtk.widgetGetDrawWindow canvas
@@ -90,13 +104,13 @@ updateCanvas graphInfoMVar canvas = do
 
 displayChart :: (Chart.PlotValue a, Show a, RealFloat a) =>
                 (AxisScaling, AxisScaling) -> (Maybe (a,a),Maybe (a,a)) -> String ->
-                Seq (Maybe a) -> [(String, Seq (Maybe a))] -> Chart.Renderable ()
+                [Maybe a] -> [(String, Seq (Maybe a))] -> Chart.Renderable ()
 displayChart (xScaling,yScaling) (xRange,yRange) xaxisName xaxis namePcs = Chart.toRenderable layout
   where
     f (Just x, Just y)  = Just (x,y)
     f _ = Nothing
     drawOne (name,pc) col
-      = Chart.plot_lines_values ^= [mapMaybe f $ zip (F.toList xaxis) (F.toList pc)]
+      = Chart.plot_lines_values ^= [mapMaybe f $ zip xaxis (F.toList pc)]
         $ Chart.plot_lines_style  .> Chart.line_color ^= col
 --        $ Chart.plot_points_style ^= Chart.filledCircles 2 red
         $ Chart.plot_lines_title ^= name

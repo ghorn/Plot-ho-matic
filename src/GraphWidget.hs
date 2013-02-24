@@ -214,6 +214,43 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   _ <- on yScalingSelector Gtk.changed updateYScaling
 
   -- create a new tree model
+  treeview <- newTreeViewArea changetters graphInfoMVar
+
+  -- chart drawing area
+  chartCanvas <- newChartCanvas graphInfoMVar
+
+  -- vbox to hold the little window on the left
+  vbox <- Gtk.vBoxNew False 4
+  Gtk.set vbox [ Gtk.containerChild := plotLengthBox
+               , Gtk.boxChildPacking   plotLengthBox := Gtk.PackNatural
+               , Gtk.containerChild := xaxisBox
+               , Gtk.boxChildPacking   xaxisBox := Gtk.PackNatural
+               , Gtk.containerChild := xScalingBox
+               , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
+               , Gtk.containerChild := xRangeBox
+               , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
+               , Gtk.containerChild := yScalingBox
+               , Gtk.boxChildPacking   yScalingBox := Gtk.PackNatural
+               , Gtk.containerChild := yRangeBox
+               , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
+               , Gtk.containerChild := treeview
+               ]
+
+  -- hbox to hold eveything
+  hbox <- Gtk.hBoxNew False 4
+  Gtk.set hbox [ Gtk.containerChild := vbox
+               , Gtk.containerChild := chartCanvas
+               , Gtk.boxChildPacking vbox := Gtk.PackNatural
+               ]
+  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
+
+  Gtk.widgetShowAll win
+  return win
+
+
+newTreeViewArea :: Tree.Tree (String, String, Maybe (a -> PbPrim))
+                   -> CC.MVar (GraphInfo a) -> IO Gtk.ScrolledWindow
+newTreeViewArea changetters graphInfoMVar = do
   let mkTreeNode (name,fullName,maybeget) = ListViewInfo name fullName maybeget False
   model <- Gtk.treeStoreNew [fmap mkTreeNode changetters]
   treeview <- Gtk.treeViewNewWithModel model
@@ -258,35 +295,9 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
     unless ret $ putStrLn "treeStoreChange fail"
     updateGraphInfo
 
-
-  -- chart drawing area
-  chartCanvas <- newChartCanvas graphInfoMVar
-
-  -- vbox to hold the little window on the left
-  vbox <- Gtk.vBoxNew False 4
-  Gtk.set vbox [ Gtk.containerChild := plotLengthBox
-               , Gtk.boxChildPacking   plotLengthBox := Gtk.PackNatural
-               , Gtk.containerChild := xaxisBox
-               , Gtk.boxChildPacking   xaxisBox := Gtk.PackNatural
-               , Gtk.containerChild := xScalingBox
-               , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
-               , Gtk.containerChild := xRangeBox
-               , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
-               , Gtk.containerChild := yScalingBox
-               , Gtk.boxChildPacking   yScalingBox := Gtk.PackNatural
-               , Gtk.containerChild := yRangeBox
-               , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
-               , Gtk.containerChild := treeview
---               , Gtk.boxChildPacking treeview := Gtk.PackNatural
-               ]
-
-  -- hbox to hold eveything
-  hbox <- Gtk.hBoxNew False 4
-  Gtk.set hbox [ Gtk.containerChild := vbox
-               , Gtk.containerChild := chartCanvas
-               , Gtk.boxChildPacking vbox := Gtk.PackNatural
-               ]
-  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
-
-  Gtk.widgetShowAll win
-  return win
+  scroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.containerAdd scroll treeview
+  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyAutomatic
+                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+                 ]
+  return scroll

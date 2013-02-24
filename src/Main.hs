@@ -1,8 +1,10 @@
 {-# OPTIONS_GHC -Wall #-}
---{-# OPTIONS_GHC -ddump-splices #-}
-{-# Language TemplateHaskell #-}
---{-# Language OverloadedStrings #-}
 {-# Language CPP #-}
+{-# Language DoAndIfThenElse #-}
+{-# Language TemplateHaskell #-}
+--{-# OPTIONS_GHC -ddump-splices #-}
+--{-# Language OverloadedStrings #-}
+
 module Main ( main ) where
 
 #if OSX

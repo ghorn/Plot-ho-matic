@@ -33,12 +33,12 @@ executable plot-ho-matic
                      template-haskell
 --                     ekg
 
---  if os(OSX)
---    cpp-options:     -DOSX
---    build-depends:   zeromq3-haskell
---  else
---    build-depends:   zeromq-haskell
---
+  if os(OSX)
+    cpp-options:     -DOSX
+    build-depends:   zeromq3-haskell
+  else
+    build-depends:   zeromq-haskell
+
   ghc-options:      -O2 -Wall -with-rtsopts=-T
   ghc-prof-options: -O2 -Wall -with-rtsopts=-T -prof -fprof-auto -fprof-cafs -rtsopts
   other-extensions: TemplateHaskell

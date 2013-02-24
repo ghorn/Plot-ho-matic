@@ -34,11 +34,11 @@ data Channel = forall a. Channel { chanName :: String
 data PbTree a where
   PbtGetter :: (a -> PbPrim) -> PbTree a
   PbtStruct :: [(String,PbTree a)] -> PbTree a
-  PbtFunctor :: Functor g => (g PbPrim -> PbPrim) -> (a -> g b) -> PbTree b -> PbTree a
+  PbtFunctor :: Functor g => (g PbPrim -> PbPrim) -> (a -> g b) -> PbTree b -> (String -> String) -> PbTree a
 
 data PbTree' a = PbtGetter' (a -> PbPrim)
                | PbtStruct' [(String,PbTree' a)]
-               | PbtFunctor' (PbTree' a)
+               | PbtFunctor' (PbTree' a) (String -> String)
 
 pbTreeToTree :: String -> PbTree a -> Tree (String, String, Maybe (a -> PbPrim))
 pbTreeToTree name tree = pbTreeToTree' "" name (please tree)
@@ -51,7 +51,7 @@ pbTreeToTree' :: String -> String -> PbTree' a -> Tree (String, String, Maybe (a
 pbTreeToTree' prefix name (PbtGetter' get) = Node (name, cat prefix name, Just get) []
 pbTreeToTree' prefix name (PbtStruct' stuff) =
   Node (name, cat prefix name, Nothing) (map (uncurry (pbTreeToTree' (cat prefix name))) stuff)
-pbTreeToTree' prefix name (PbtFunctor' tree) = pbTreeToTree' prefix ("["++name++"]") tree
+pbTreeToTree' prefix name (PbtFunctor' tree s2s) = pbTreeToTree' prefix (s2s name) tree
 
 please :: PbTree a -> PbTree' a
 please = f Identity runIdentity
@@ -61,7 +61,7 @@ f afb unfunct (PbtGetter get) = PbtGetter' $ \a -> unfunct $ fmap get (afb a)
 f afb unfunct (PbtStruct stuff) = PbtStruct' $ zip names (map (f afb unfunct) trees)
   where
     (names,trees) = unzip stuff
-f afb unfunct (PbtFunctor unfunct' h theRest) = PbtFunctor' $ f wow blah theRest
+f afb unfunct (PbtFunctor unfunct' h theRest s2s) = PbtFunctor' (f wow blah theRest) s2s
   where
     wow = \a -> Compose (fmap h (afb a))
     blah = \fga -> unfunct $ fmap unfunct' (getCompose fga)

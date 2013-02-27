@@ -9,17 +9,16 @@ import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
-import Text.Read ( readMaybe )
 
 import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
 import PlotChart ( GraphInfo(..), AxisScaling(..), newChartCanvas )
+import ReadMaybe ( readMaybe )
 
 data ListViewInfo a = ListViewInfo { lviName :: String
                                    , lviFullName :: String
                                    , lviGetter :: Maybe (a -> PbPrim)
                                    , lviMarked :: Bool
                                    }
-
 
 labeledWidget :: Gtk.WidgetClass a => String -> a -> IO Gtk.HBox
 labeledWidget name widget = do

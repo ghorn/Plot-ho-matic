@@ -9,11 +9,11 @@ import Data.Time ( getCurrentTime, diffUTCTime )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
-import Text.Read ( readMaybe )
 
 import Accessors ( makeAccessors )
 import PlotTypes ( Channel(..), PbTree, pbTreeToTree )
 import GraphWidget ( newGraph )
+import ReadMaybe ( readMaybe )
 
 data ListView = ListView { lvChan :: Channel
                          , lvMaxHist :: Int

@@ -40,7 +40,7 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   -- mvar with everything the graphs need to plot
   graphInfoMVar <- CC.newMVar GraphInfo { giData = chanseq
                                         , giLen = 0 -- changed immediately
-                                        , giXAxis = XAxisCounter
+                                        , giXAxis = XAxisStaticCounter
                                         , giXScaling = LinearScaling
                                         , giYScaling = LinearScaling
                                         , giXRange = Nothing
@@ -77,7 +77,7 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
 
   -- which one is the x axis?
   xaxisSelector <- Gtk.comboBoxNewText
-  let xaxisSelectorStrings = ["(counter)","(static counter)","(timestamp)"]
+  let xaxisSelectorStrings = ["(static counter)","(counter)","(timestamp)"]
   mapM_ (Gtk.comboBoxAppendText xaxisSelector) xaxisSelectorStrings
   let f (_,_,Nothing) = Nothing
       f (_,x,Just y) = Just (x,y)
@@ -90,9 +90,9 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
         k <- Gtk.comboBoxGetActive xaxisSelector
         _ <- case k of
           0 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisCounter}
-          1 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxis = XAxisStaticCounter}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxis = XAxisCounter}
           2 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxis = XAxisTime}
           _ -> CC.modifyMVar_ graphInfoMVar $

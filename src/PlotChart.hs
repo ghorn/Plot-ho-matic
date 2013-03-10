@@ -45,8 +45,12 @@ newChartCanvas graphInfoMVar = do
   return chartCanvas
 
 pbpToFrac :: Fractional a => PbPrim -> Maybe a
-pbpToFrac (PbDouble c)     = Just $ realToFrac c
-pbpToFrac (PbFloat c)      = Just $ realToFrac c
+pbpToFrac (PbDouble c)
+  | isNaN c = Nothing
+  | otherwise = Just $ realToFrac c
+pbpToFrac (PbFloat c)
+  | isNaN c = Nothing
+  | otherwise = Just $ realToFrac c
 pbpToFrac (PbInt32 c)      = Just $ realToFrac c
 pbpToFrac (PbInt64 c)      = Just $ realToFrac c
 pbpToFrac (PbWord32 c)     = Just $ realToFrac c

@@ -71,6 +71,9 @@ handleField (ConT type') = do
       outputs  <- mapM handleField types
       return $ AStruct (zip names outputs)
 
+    -- empty protobuf
+    [NormalC _ []] -> return (AStruct [])
+
     -- everything else
     xx -> do
       maybePrim <- getPbPrim type'

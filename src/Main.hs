@@ -21,6 +21,7 @@ import qualified Text.ProtocolBuffers as PB
 
 import qualified Kite.MultiCarousel as MC
 import qualified Kite.CarouselState as CS
+import qualified MheMpc.MheMpcHorizons as MMH
 
 import ParseArgs ( getip )
 import Plotter ( runPlotter, newChannel, makeAccessors )
@@ -31,16 +32,15 @@ main = do
 --  ekgTid <- fmap EKG.serverThreadId $ EKG.forkServer "localhost" 8000
   ip <- getip "plot-ho-matic" "tcp://localhost:5563"
   putStrLn $ "using ip \""++ip++"\""
-  
+
   (c0, chan0) <- newChannel "multi-carousel" $(makeAccessors ''MC.MultiCarousel)
   (c1, chan1) <- newChannel "carousel" $(makeAccessors ''CS.CarouselState)
+  (c2, chan2) <- newChannel "mhe-mpc-horizons" $(makeAccessors ''MMH.MheMpcHorizons)
   listenerTid0 <- CC.forkIO (sub ip chan0 c0)
   listenerTid1 <- CC.forkIO (sub ip chan1 c1)
+  listenerTid2 <- CC.forkIO (sub ip chan2 c2)
   
-  runPlotter [c0,c1] [ listenerTid0
-                     , listenerTid1
---                  , ekgTid
-                     ]
+  runPlotter [c0,c1,c2] [listenerTid0, listenerTid1, listenerTid2]
 
 withContext :: (ZMQ.Context -> IO a) -> IO a
 #if OSX

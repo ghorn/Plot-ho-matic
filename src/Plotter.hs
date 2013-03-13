@@ -3,12 +3,16 @@
 module Plotter ( newChannel, runPlotter, makeAccessors ) where
 
 import qualified Control.Concurrent as CC
+import qualified Data.Foldable as F
 import Data.Sequence ( (|>) )
 import qualified Data.Sequence as S
 import Data.Time ( getCurrentTime, diffUTCTime )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
+import System.IO ( withFile, IOMode ( WriteMode ) )
+import qualified Text.ProtocolBuffers as PB
+import qualified Data.ByteString.Lazy as BSL
 
 import Accessors ( makeAccessors )
 import PlotTypes ( Channel(..), PbTree, pbTreeToTree )
@@ -19,7 +23,7 @@ data ListView = ListView { lvChan :: Channel
                          , lvMaxHist :: Int
                          }
 
-newChannel :: String -> PbTree a -> IO (Channel, CC.Chan a)
+newChannel :: (PB.ReflectDescriptor a, PB.Wire a) => String -> PbTree a -> IO (Channel, CC.Chan a)
 newChannel name pbTree = do
   time0 <- getCurrentTime
   
@@ -45,7 +49,12 @@ newChannel name pbTree = do
                         , chanSeq = seqMv
                         , chanMaxHist = maxHistMv
                         , chanServerThreadId = serverTid
+                        , chanGetByteStrings = cgb
                         }
+      cgb = do
+        s <- CC.readMVar seqMv
+        return $ map (\(x,y,z) -> (PB.messagePut x,y,z)) $ F.toList s
+
   return (retChan, seqChan)
 
 runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
@@ -105,29 +114,35 @@ newChannelWidget channels graphWindowsToBeKilled = do
   col0 <- Gtk.treeViewColumnNew
   col1 <- Gtk.treeViewColumnNew
   col2 <- Gtk.treeViewColumnNew
+  col3 <- Gtk.treeViewColumnNew
 
   Gtk.treeViewColumnSetTitle col0 "channel"
   Gtk.treeViewColumnSetTitle col1 "history"
   Gtk.treeViewColumnSetTitle col2 "new"
+  Gtk.treeViewColumnSetTitle col3 "save"
 
   renderer0 <- Gtk.cellRendererTextNew
   renderer1 <- Gtk.cellRendererTextNew
   renderer2 <- Gtk.cellRendererToggleNew
+  renderer3 <- Gtk.cellRendererToggleNew
 
   Gtk.cellLayoutPackStart col0 renderer0 True
   Gtk.cellLayoutPackStart col1 renderer1 True
   Gtk.cellLayoutPackStart col2 renderer2 True
+  Gtk.cellLayoutPackStart col3 renderer3 True
 
   Gtk.cellLayoutSetAttributes col0 renderer0 model $ \lv -> [ Gtk.cellText := chanName (lvChan lv)]
   Gtk.cellLayoutSetAttributes col1 renderer1 model $ \lv -> [ Gtk.cellText := show (lvMaxHist lv)
                                                             , Gtk.cellTextEditable := True
                                                             ]
   Gtk.cellLayoutSetAttributes col2 renderer2 model $ const [ Gtk.cellToggleActive := False]
+  Gtk.cellLayoutSetAttributes col3 renderer3 model $ const [ Gtk.cellToggleActive := False]
 
   
   _ <- Gtk.treeViewAppendColumn treeview col0
   _ <- Gtk.treeViewAppendColumn treeview col1
   _ <- Gtk.treeViewAppendColumn treeview col2
+  _ <- Gtk.treeViewAppendColumn treeview col3
 
   -- spawn a new graph when a checkbox is clicked
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
@@ -137,6 +152,28 @@ newChannelWidget channels graphWindowsToBeKilled = do
     
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
+
+
+  -- save all channel data when this button is pressed
+  _ <- on renderer3 Gtk.cellToggled $ \pathStr -> do
+    let (i:_) = Gtk.stringToTreePath pathStr
+    lv <- Gtk.listStoreGetValue model i
+    let writerThread = do
+          bct <- chanGetByteStrings (lvChan lv)
+          let filename = (chanName (lvChan lv)) ++ "_log.dat"
+              blah _      sizes [] = return (reverse sizes)
+              blah handle sizes ((x,_,_):xs) = do
+                BSL.hPut handle x
+                blah handle ((BSL.length x):sizes) xs
+          putStrLn $ "trying to write file \"" ++ filename ++ "\"..."
+          sizes <- withFile filename WriteMode $ \handle -> blah handle [] bct
+          putStrLn $ "finished writing file, wrote " ++ show (length sizes) ++ " protos"
+
+          putStrLn "writing file with sizes..."
+          writeFile (filename ++ ".sizes") (unlines $ map show sizes)
+          putStrLn "done"
+    _ <- CC.forkIO writerThread
+    return ()
 
 
   -- how long to make the history

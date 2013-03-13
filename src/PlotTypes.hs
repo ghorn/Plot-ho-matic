@@ -29,6 +29,7 @@ data Channel = forall a. Channel { chanName :: String
                                  , chanSeq :: MVar (Seq (a,Int,NominalDiffTime))
                                  , chanMaxHist :: MVar Int
                                  , chanServerThreadId :: ThreadId
+                                 , chanGetByteStrings :: IO [(BSL.ByteString, Int, NominalDiffTime)]
                                  }
 
 data PbTree a where

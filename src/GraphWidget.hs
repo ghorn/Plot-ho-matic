@@ -62,7 +62,7 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   
   -- create a new tree model
   treeview' <- newTreeViewArea changetters graphInfoMVar
-  treeview <- Gtk.expanderNew "variables"
+  treeview <- Gtk.expanderNew "signals"
   Gtk.set treeview [ Gtk.containerChild := treeview'
                    , Gtk.expanderExpanded := True
                    ]

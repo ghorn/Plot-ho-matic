@@ -37,6 +37,10 @@ newGraph :: Channel -> IO Gtk.Window
 newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   win <- Gtk.windowNew
 
+  _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
+                   , Gtk.windowTitle := chanName chan
+                   ]
+
   -- mvar with everything the graphs need to plot
   graphInfoMVar <- CC.newMVar GraphInfo { giData = chanseq
                                         , giLen = 0 -- changed immediately
@@ -47,11 +51,47 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
                                         , giYRange = Nothing
                                         , giGetters = []
                                         }
-
-  _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
-                   , Gtk.windowTitle := chanName chan
+                   
+  -- the thing where users select stuff
+  options' <- makeOptionsWidget graphInfoMVar changetters
+  options <- Gtk.expanderNew "options"
+  Gtk.set options [ Gtk.containerChild := options'
+                  , Gtk.expanderExpanded := True
+                  ]
+  
+  
+  -- create a new tree model
+  treeview' <- newTreeViewArea changetters graphInfoMVar
+  treeview <- Gtk.expanderNew "variables"
+  Gtk.set treeview [ Gtk.containerChild := treeview'
+                   , Gtk.expanderExpanded := True
                    ]
+  
+  vbox <- Gtk.vBoxNew False 4
+  Gtk.set vbox [ Gtk.containerChild := options
+               , Gtk.boxChildPacking options := Gtk.PackNatural
+               , Gtk.containerChild := treeview
+               , Gtk.boxChildPacking treeview := Gtk.PackGrow
+               ]
+    
+  -- chart drawing area
+  chartCanvas <- newChartCanvas graphInfoMVar
 
+  -- hbox to hold eveything
+  hbox <- Gtk.hBoxNew False 4
+  Gtk.set hbox [ Gtk.containerChild := vbox
+               , Gtk.boxChildPacking vbox := Gtk.PackNatural
+               , Gtk.containerChild := chartCanvas
+               ]
+  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
+
+  Gtk.widgetShowAll win
+  return win
+
+
+makeOptionsWidget :: CC.MVar (GraphInfo a) -> Tree.Tree (String, String, Maybe (a -> PbPrim))
+                     -> IO Gtk.VBox
+makeOptionsWidget graphInfoMVar changetters = do
   -- how many to show?
   plotLength <- Gtk.entryNew
   plotLengthBox <- labeledWidget "# points to plot:" plotLength
@@ -212,14 +252,9 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   _ <- on xScalingSelector Gtk.changed updateXScaling
   _ <- on yScalingSelector Gtk.changed updateYScaling
 
-  -- create a new tree model
-  treeview <- newTreeViewArea changetters graphInfoMVar
-
-  -- chart drawing area
-  chartCanvas <- newChartCanvas graphInfoMVar
-
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
+  
   Gtk.set vbox [ Gtk.containerChild := plotLengthBox
                , Gtk.boxChildPacking   plotLengthBox := Gtk.PackNatural
                , Gtk.containerChild := xaxisBox
@@ -232,19 +267,9 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
                , Gtk.boxChildPacking   yScalingBox := Gtk.PackNatural
                , Gtk.containerChild := yRangeBox
                , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
-               , Gtk.containerChild := treeview
                ]
-
-  -- hbox to hold eveything
-  hbox <- Gtk.hBoxNew False 4
-  Gtk.set hbox [ Gtk.containerChild := vbox
-               , Gtk.containerChild := chartCanvas
-               , Gtk.boxChildPacking vbox := Gtk.PackNatural
-               ]
-  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
-
-  Gtk.widgetShowAll win
-  return win
+    
+  return vbox
 
 
 newTreeViewArea :: Tree.Tree (String, String, Maybe (a -> PbPrim))
@@ -296,7 +321,7 @@ newTreeViewArea changetters graphInfoMVar = do
 
   scroll <- Gtk.scrolledWindowNew Nothing Nothing
   Gtk.containerAdd scroll treeview
-  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyAutomatic
+  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
                  , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
                  ]
   return scroll

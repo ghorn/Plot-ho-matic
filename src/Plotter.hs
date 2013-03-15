@@ -180,7 +180,6 @@ newChannelWidget channels graphWindowsToBeKilled = do
   _ <- on renderer1 Gtk.edited $ \treePath txt -> do
     let (i:_) = treePath
     lv <- Gtk.listStoreGetValue model i
-    putStrLn $ "history len: " ++ txt
     case readMaybe txt of
       Nothing -> do
         putStrLn $ "invalid non-integer range entry: " ++ txt
@@ -193,6 +192,7 @@ newChannelWidget channels graphWindowsToBeKilled = do
                   Gtk.listStoreSetValue model i (lv {lvMaxHist = k0})
                 else do
                   _ <- CC.swapMVar (chanMaxHist (lvChan lv)) k
+                  Gtk.listStoreSetValue model i (lv {lvMaxHist = k})
                   return ()
 
   return treeview

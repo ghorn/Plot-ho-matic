@@ -136,7 +136,7 @@ makeOptionsWidget graphInfoMVar changetters = do
           2 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxis = XAxisTime}
           _ -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisFun (xaxisGetters !! (k-(length xaxisSelectorStrings)))}
+               \gi -> return $ gi {giXAxis = XAxisFun (xaxisGetters !! (k - length xaxisSelectorStrings))}
         return ()
   updateXAxis
   _ <- on xaxisSelector Gtk.changed updateXAxis

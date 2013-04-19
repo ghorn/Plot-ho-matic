@@ -47,9 +47,9 @@ getPbPrim name = case M.lookup name pbPrimMap of
   x@(Just _) -> return x
   Nothing -> do
     isEnum <- isInstance ''Enum [ConT name]
-    if isEnum
-      then return $ Just [| PbEnum . (\x -> (fromEnum x, show x)) |]
-      else return Nothing
+    return $ if isEnum
+      then Just [| PbEnum . (\x -> (fromEnum x, show x)) |]
+      else Nothing
 
 
 -- | take a constructor field and return usable stuff

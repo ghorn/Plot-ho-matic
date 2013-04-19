@@ -69,7 +69,7 @@ getSeq xs = case S.viewr xs of
   EmptyR -> S.empty
   -- otherwise examine the first element
   -- if the first element is a sequence, we'll plot the embedded sequence, not the history
-  _ :> (PbSeq xs') -> getSeq xs'
+  _ :> PbSeq xs' -> getSeq xs'
   -- if it's a primitive, map pbpToFrac over the list
   _ -> fmap pbpToFrac xs
 
@@ -138,4 +138,4 @@ displayChart (xScaling,yScaling) (xRange,yRange) xaxisName xaxis namePcs = Chart
              $ Chart.layout1_bottom_axis .> Chart.laxis_title ^= xaxisName
              $ xscaleFun
              $ yscaleFun
-             $ Chart.defaultLayout1
+             Chart.defaultLayout1

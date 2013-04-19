@@ -64,8 +64,8 @@ f afb unfunct (PbtStruct stuff) = PbtStruct' $ zip names (map (f afb unfunct) tr
     (names,trees) = unzip stuff
 f afb unfunct (PbtFunctor unfunct' h theRest s2s) = PbtFunctor' (f wow blah theRest) s2s
   where
-    wow = \a -> Compose (fmap h (afb a))
-    blah = \fga -> unfunct $ fmap unfunct' (getCompose fga)
+    wow a = Compose (fmap h (afb a))
+    blah fga = unfunct $ fmap unfunct' (getCompose fga)
 
 data PbPrim = PbDouble Double
             | PbFloat Float

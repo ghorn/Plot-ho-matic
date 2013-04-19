@@ -2,6 +2,7 @@
 
 module Plotter ( newChannel, runPlotter, makeAccessors, Channel ) where
 
+import Control.Monad ( void )
 import qualified Control.Concurrent as CC
 import qualified Data.Foldable as F
 import Data.Sequence ( (|>) )
@@ -81,7 +82,7 @@ runPlotter channels backgroundThreadsToKill = do
   -- button to clear history
   buttonClear <- Gtk.buttonNewWithLabel "clear history"
   _ <- Gtk.onClicked buttonClear $ do
-    let clearChan (Channel {chanSeq=cs}) = CC.swapMVar cs S.empty >> return ()
+    let clearChan (Channel {chanSeq=cs}) = void (CC.swapMVar cs S.empty)
     mapM_ clearChan channels
 
   -- list of channels
@@ -160,11 +161,11 @@ newChannelWidget channels graphWindowsToBeKilled = do
     lv <- Gtk.listStoreGetValue model i
     let writerThread = do
           bct <- chanGetByteStrings (lvChan lv)
-          let filename = (chanName (lvChan lv)) ++ "_log.dat"
+          let filename = chanName (lvChan lv) ++ "_log.dat"
               blah _      sizes [] = return (reverse sizes)
               blah handle sizes ((x,_,_):xs) = do
                 BSL.hPut handle x
-                blah handle ((BSL.length x):sizes) xs
+                blah handle (BSL.length x : sizes) xs
           putStrLn $ "trying to write file \"" ++ filename ++ "\"..."
           sizes <- withFile filename WriteMode $ \handle -> blah handle [] bct
           putStrLn $ "finished writing file, wrote " ++ show (length sizes) ++ " protos"

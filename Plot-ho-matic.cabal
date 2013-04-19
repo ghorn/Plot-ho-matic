@@ -23,8 +23,8 @@ Changelo
 library
   hs-source-dirs:    src
 --                     Example,
-  exposed-modules:   Plotter,
-                     Accessors,
+  exposed-modules:   Plotter
+  other-modules:     Accessors,
                      GraphWidget,
                      PlotChart,
                      PlotTypes,

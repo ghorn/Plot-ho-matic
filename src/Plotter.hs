@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module Plotter ( newChannel, runPlotter, makeAccessors ) where
+module Plotter ( newChannel, runPlotter, makeAccessors, Channel ) where
 
 import qualified Control.Concurrent as CC
 import qualified Data.Foldable as F

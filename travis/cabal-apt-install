@@ -1,0 +1,8 @@
+#! /bin/bash
+
+APT="sudo apt-get -q -y"
+CABAL_INSTALL_DEPS="cabal install --only-dependencies"
+
+$APT update
+$APT install libpango1.0-dev libcairo2-dev libglib2.0-dev
+$CABAL_INSTALL_DEPS

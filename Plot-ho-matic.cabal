@@ -1,0 +1,46 @@
+name:                Plot-ho-matic
+version:             0.1.0.0
+synopsis:            Real-time line plotter for protobuf-like data
+license:             BSD3
+license-file:        LICENSE
+author:              Greg Horn
+maintainer:          gregmainland@gmail.com
+--copyright:           Copyright (c) 2013, Greg Horn
+category:            Graphics
+build-type:          Simple
+cabal-version:       >=1.8
+extra-source-files:
+  .gitignore
+  .travis.yml
+  CHANGELOG.md
+  README.md
+description: {
+Plot-ho-matic provides real-time plotting of time-series data with a simple interface.
+.
+Changelo
+}
+
+library
+  hs-source-dirs:    src
+--                     Example,
+  exposed-modules:   Plotter,
+                     Accessors,
+                     GraphWidget,
+                     PlotChart,
+                     PlotTypes,
+                     ReadMaybe
+  build-depends:     base >= 4.5.0 && < 4.7,
+                     protocol-buffers,
+                     template-haskell,
+                     containers,
+                     glib,
+                     gtk,
+                     Chart,
+                     time,
+                     data-accessor,
+                     bytestring,
+                     transformers
+
+  ghc-options:      -O2 -Wall
+  ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts
+  other-extensions: TemplateHaskell

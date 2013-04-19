@@ -1,4 +1,5 @@
 #! /bin/bash
+set -eu
 
 APT="sudo apt-get -q -y"
 CABAL_INSTALL_DEPS="cabal install --only-dependencies"

@@ -24,7 +24,7 @@ data ListView = ListView { lvChan :: Channel
                          , lvMaxHist :: Int
                          }
 
-newChannel :: (PB.ReflectDescriptor a, PB.Wire a) => String -> PbTree a -> IO (Channel, CC.Chan a)
+newChannel :: (PB.ReflectDescriptor a, PB.Wire a) => String -> PbTree a -> IO (Channel, a -> IO ())
 newChannel name pbTree = do
   time0 <- getCurrentTime
   
@@ -56,7 +56,7 @@ newChannel name pbTree = do
         s <- CC.readMVar seqMv
         return $ map (\(x,y,z) -> (PB.messagePut x,y,z)) $ F.toList s
 
-  return (retChan, seqChan)
+  return (retChan, CC.writeChan seqChan)
 
 runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
 runPlotter channels backgroundThreadsToKill = do

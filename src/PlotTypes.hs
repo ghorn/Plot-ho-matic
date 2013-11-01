@@ -15,7 +15,6 @@ import qualified Data.ByteString.Lazy as BSL
 import Data.Sequence ( Seq )
 import Data.Time ( NominalDiffTime )
 import Data.Tree ( Tree(..) )
-import qualified Text.ProtocolBuffers.Header as P'
 import Data.Functor.Compose
 import Data.Functor.Identity
 
@@ -69,14 +68,15 @@ f afb unfunct (PbtFunctor unfunct' h theRest s2s) = PbtFunctor' (f wow blah theR
 
 data PbPrim = PbDouble Double
             | PbFloat Float
-            | PbInt32 P'.Int32
-            | PbInt64 P'.Int64
-            | PbWord32 P'.Word32
-            | PbWord64 P'.Word64
+--            | PbInt32 P'.Int32
+--            | PbInt64 P'.Int64
+            | PbInt Int
+--            | PbWord32 P'.Word32
+--            | PbWord64 P'.Word64
             | PbBool Bool
-            | PbUtf8 P'.Utf8
+--            | PbUtf8 P'.Utf8
 --            | PbByteString P'.ByteString
-            | PbByteString BSL.ByteString
+--            | PbByteString BSL.ByteString
             | PbSeq (Seq PbPrim)
             | PbMaybe (Maybe PbPrim)
             | PbEnum (Int,String)

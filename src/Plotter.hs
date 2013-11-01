@@ -6,13 +6,13 @@ import Control.Monad ( void )
 import qualified Control.Concurrent as CC
 import qualified Data.Foldable as F
 import Data.Sequence ( (|>) )
-import qualified Data.Sequence as S
+import qualified Data.Sequence as Seq
 import Data.Time ( getCurrentTime, diffUTCTime )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import System.IO ( withFile, IOMode ( WriteMode ) )
-import qualified Text.ProtocolBuffers as PB
+import qualified Data.Serialize as S
 import qualified Data.ByteString.Lazy as BSL
 
 import Accessors ( makeAccessors )
@@ -24,12 +24,12 @@ data ListView = ListView { lvChan :: Channel
                          , lvMaxHist :: Int
                          }
 
-newChannel :: (PB.ReflectDescriptor a, PB.Wire a) => String -> PbTree a -> IO (Channel, a -> IO ())
+newChannel :: S.Serialize a => String -> PbTree a -> IO (Channel, a -> IO ())
 newChannel name pbTree = do
   time0 <- getCurrentTime
   
   seqChan <- CC.newChan
-  seqMv <- CC.newMVar S.empty
+  seqMv <- CC.newMVar Seq.empty
   maxHistMv <- CC.newMVar (10000 :: Int)
 
   let serverLoop k = do
@@ -39,7 +39,7 @@ newChannel name pbTree = do
         time <- getCurrentTime
         -- append this to the Seq in the MVar, dropping the excess old messages
         maxNum <- CC.readMVar maxHistMv
-        let f seq0 = return $ S.drop (S.length seq0 + 1 - maxNum) (seq0 |> (newMsg, k, diffUTCTime time time0))
+        let f seq0 = return $ Seq.drop (Seq.length seq0 + 1 - maxNum) (seq0 |> (newMsg, k, diffUTCTime time time0))
         CC.modifyMVar_ seqMv f
         -- loop forever
         serverLoop (k+1)
@@ -54,7 +54,7 @@ newChannel name pbTree = do
                         }
       cgb = do
         s <- CC.readMVar seqMv
-        return $ map (\(x,y,z) -> (PB.messagePut x,y,z)) $ F.toList s
+        return $ map (\(x,y,z) -> (S.encodeLazy x,y,z)) $ F.toList s
 
   return (retChan, CC.writeChan seqChan)
 
@@ -82,7 +82,7 @@ runPlotter channels backgroundThreadsToKill = do
   -- button to clear history
   buttonClear <- Gtk.buttonNewWithLabel "clear history"
   _ <- Gtk.onClicked buttonClear $ do
-    let clearChan (Channel {chanSeq=cs}) = void (CC.swapMVar cs S.empty)
+    let clearChan (Channel {chanSeq=cs}) = void (CC.swapMVar cs Seq.empty)
     mapM_ clearChan channels
 
   -- list of channels

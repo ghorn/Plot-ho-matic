@@ -1,13 +1,15 @@
 {-# OPTIONS_GHC -Wall #-}
 --{-# OPTIONS_GHC -ddump-splices #-}
 {-# Language TemplateHaskell #-}
---{-# Language OverloadedStrings #-}
+{-# Language DeriveGeneric #-}
 
 module Main ( main ) where
 
 import qualified Control.Concurrent as CC
 import qualified Data.Sequence as S
+import Data.Serialize ( Serialize )
 import Data.Sequence ( (<|) )
+import GHC.Generics ( Generic )
 --import qualified System.Remote.Monitoring as EKG
 
 import Plotter ( runPlotter, newChannel, makeAccessors )
@@ -15,11 +17,13 @@ import Plotter ( runPlotter, newChannel, makeAccessors )
 data Xyz = MkXyz { x_ :: Double
                  , y_ :: Double
                  , z_ :: Double
-                 }
+                 } deriving Generic
 data Axyz = MkAxyz { a_ :: Double
                    , xyzList_ :: S.Seq Xyz
                    , xyz_ :: Xyz
-                   }
+                   } deriving Generic
+instance Serialize Xyz
+instance Serialize Axyz
 
 incrementAxyz :: Axyz -> Axyz
 incrementAxyz (MkAxyz a xyzs _) = MkAxyz (a+0.2) (S.take 5 (xyz <| xyzs)) xyz
@@ -30,10 +34,10 @@ incrementXyz :: Xyz -> Xyz
 incrementXyz (MkXyz a _ _) = MkXyz (a+0.3) (2 * sin a) (3 * cos a)
 
 -- a random function to write a bunch of data to a chan
-channelWriter :: Int -> (a -> a) -> CC.Chan a -> a -> IO ()
+channelWriter :: Int -> (a -> a) -> (a -> IO ()) -> a -> IO ()
 channelWriter delay increment chan x = do
   CC.threadDelay delay
-  CC.writeChan chan (increment x)
+  chan (increment x)
   channelWriter delay increment chan (increment x)
 
 main :: IO ()

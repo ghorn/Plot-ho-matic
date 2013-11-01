@@ -31,6 +31,7 @@ library
                      ReadMaybe
   build-depends:     base >= 4.5.0 && < 4.7,
                      bytestring,
+                     cereal,
                      glib,
                      gtk,
                      time,
@@ -40,8 +41,7 @@ library
                      Chart-gtk >= 1.0,
                      data-default-class,
                      lens,
-                     transformers,
-                     protocol-buffers
+                     transformers
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts

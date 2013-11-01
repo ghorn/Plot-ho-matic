@@ -53,13 +53,10 @@ pbpToFrac (PbDouble c)
 pbpToFrac (PbFloat c)
   | isNaN c = Nothing
   | otherwise = Just $ realToFrac c
-pbpToFrac (PbInt32 c)      = Just $ realToFrac c
-pbpToFrac (PbInt64 c)      = Just $ realToFrac c
-pbpToFrac (PbWord32 c)     = Just $ realToFrac c
-pbpToFrac (PbWord64 c)     = Just $ realToFrac c
+pbpToFrac (PbInt c)        = Just $ realToFrac c
 pbpToFrac (PbBool c)       = Just $ (\x -> if x then 1 else 0) c
-pbpToFrac (PbUtf8 _)       = Nothing
-pbpToFrac (PbByteString _) = Nothing
+--pbpToFrac (PbUtf8 _)       = Nothing
+--pbpToFrac (PbByteString _) = Nothing
 pbpToFrac (PbSeq _) = Nothing
 pbpToFrac (PbMaybe x) = x >>= pbpToFrac
 pbpToFrac (PbEnum (k,_)) = Just $ realToFrac k

@@ -8,7 +8,7 @@ import Data.Map ( Map )
 import qualified Data.Map as M
 import Data.Maybe ( fromMaybe )
 import Language.Haskell.TH
-import qualified Text.ProtocolBuffers.Header as P'
+import qualified Data.Sequence as S
 
 import PlotTypes ( PbTree(..), PbPrim(..) )
 
@@ -34,13 +34,14 @@ pbPrimMap :: Map Name ExpQ
 pbPrimMap =
   M.fromList [ (''Double       , [| PbDouble |])
              , (''Float        , [| PbFloat |])
-             , (''P'.Int32     , [| PbInt32 |])
-             , (''P'.Int64     , [| PbInt64 |])
-             , (''P'.Word32    , [| PbWord32 |])
-             , (''P'.Word64    , [| PbWord64 |])
+--             , (''P'.Int32     , [| PbInt32 |])
+--             , (''P'.Int32      , [| PbInt64 |])
+             , (''Int          , [| PbInt |])
+--             , (''P'.Word32    , [| PbWord32 |])
+--             , (''P'.Word64    , [| PbWord64 |])
              , (''Bool         , [| PbBool |])
-             , (''P'.Utf8      , [| PbUtf8 |])
-             , (''P'.ByteString, [| PbByteString |])
+--             , (''P'.Utf8      , [| PbUtf8 |])
+--             , (''P'.ByteString, [| PbByteString |])
              ]
 getPbPrim :: Name -> Q (Maybe ExpQ)
 getPbPrim name = case M.lookup name pbPrimMap of
@@ -83,8 +84,8 @@ handleField (ConT type') = do
       return (APrim con)
 -- handle optional fields
 handleField x@(AppT (ConT con) (ConT type'))
-  | con == ''Maybe  = fmap AMaybe $ handleField (ConT type')
-  | con == ''P'.Seq = fmap ASeq   $ handleField (ConT type')
+  | con == ''Maybe = fmap AMaybe $ handleField (ConT type')
+  | con == ''S.Seq = fmap ASeq   $ handleField (ConT type')
   | otherwise = error $ "handleField (AppT ...): can't handle constructor "++show con++" in "++show x
 handleField x = error $ "handleField _: unhandled case: " ++ show x
 

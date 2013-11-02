@@ -25,6 +25,7 @@ library
 --                     Example,
   exposed-modules:   Plotter
   other-modules:     Accessors,
+                     GAccessors,
                      GraphWidget,
                      PlotChart,
                      PlotTypes,

@@ -1,35 +1,16 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -ddump-deriv #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
-module GAccessors where
+module GAccessors ( AccessorTree(..), accessors ) where
 
 import GHC.Generics
 
-import Data.List
-
---getIndices k (Getter msgs) 
-
---unProduct :: AccTree -> AccTree'
---unProduct (Product x y)
-
-
---data AccTree' = Constructor' String AccTree'
---              | Getter' [String]
-
-showMsgs :: [String] -> String
-showMsgs = intercalate "."
-
-showAccTree :: String -> AccTree a -> [String]
+showAccTree :: String -> AccessorTree a -> [String]
 showAccTree spaces (Getter _) = [spaces ++ "Getter"]
 showAccTree spaces (Data name tree) =
   [spaces ++ "Data " ++ name] ++
@@ -44,52 +25,54 @@ showAccTree spaces (Product x y) =
   [spaces ++ "Product"] ++
   concatMap (showAccTree (spaces ++ "    ")) [x,y]
 
-instance Show (AccTree a) where
+instance Show (AccessorTree a) where
   show = unlines . showAccTree ""
 
-data AccTree a where
-  Data :: String -> AccTree a -> AccTree a
-  Constructor :: String -> AccTree a -> AccTree a
-  Product :: AccTree a -> AccTree a -> AccTree a
-  Selector :: String -> AccTree a -> AccTree a
-  Getter :: (a -> Double) -> AccTree a
+data AccessorTree a = Data String (AccessorTree a)
+                    | Constructor String (AccessorTree a)
+                    | Product (AccessorTree a) (AccessorTree a)
+                    | Selector String (AccessorTree a)
+                    | Getter (a -> Double)
+
+accessors :: Lookup a => a -> AccessorTree a
+accessors = flip toAccessorTree id
 
 class Lookup a where
-  makeTree :: a -> (b -> a) -> AccTree b
+  toAccessorTree :: a -> (b -> a) -> AccessorTree b
 
-  default makeTree :: (Generic a, GLookup (Rep a)) => a -> (b -> a) -> AccTree b
-  makeTree x f = gmakeTree (from x) (from . f)
+  default toAccessorTree :: (Generic a, GLookup (Rep a)) => a -> (b -> a) -> AccessorTree b
+  toAccessorTree x f = gtoAccessorTree (from x) (from . f)
 
 class GLookup f where
-  gmakeTree :: f a -> (b -> f a) -> AccTree b
+  gtoAccessorTree :: f a -> (b -> f a) -> AccessorTree b
 
 instance Lookup Float where
-  makeTree _ f = Getter $ realToFrac . f
+  toAccessorTree _ f = Getter $ realToFrac . f
 instance Lookup Double where
-  makeTree _ f = Getter $ realToFrac . f
+  toAccessorTree _ f = Getter $ realToFrac . f
 instance Lookup Int where
-  makeTree _ f = Getter $ fromIntegral . f
+  toAccessorTree _ f = Getter $ fromIntegral . f
 
 instance (Lookup f, Generic f) => GLookup (Rec0 f) where
-  gmakeTree x f = makeTree (unK1 x) (unK1 . f)
+  gtoAccessorTree x f = toAccessorTree (unK1 x) (unK1 . f)
 
 instance (GLookup f, GLookup g) => GLookup (f :*: g) where
-  gmakeTree (x :*: y) f = Product tf tg
+  gtoAccessorTree (x :*: y) f = Product tf tg
     where
-      tf = gmakeTree x $ left . f
-      tg = gmakeTree y $ right . f
+      tf = gtoAccessorTree x $ left . f
+      tg = gtoAccessorTree y $ right . f
 
       left  ( x' :*: _  ) = x'
       right ( _  :*: y' ) = y'
 
 instance (Selector s, GLookup a) => GLookup (S1 s a) where
-  gmakeTree x f = Selector (selName x) $ gmakeTree (unM1 x) (unM1 . f)
+  gtoAccessorTree x f = Selector (selName x) $ gtoAccessorTree (unM1 x) (unM1 . f)
 
 instance (Constructor c, GLookup a) => GLookup (C1 c a) where
-  gmakeTree x f = Constructor (conName x) $ gmakeTree (unM1 x) (unM1 . f)
+  gtoAccessorTree x f = Constructor (conName x) $ gtoAccessorTree (unM1 x) (unM1 . f)
 
 instance (Datatype d, GLookup (C1 c a)) => GLookup (D1 d (C1 c a)) where
-  gmakeTree x f = Data (datatypeName x) $ gmakeTree (unM1 x) (unM1 . f)
+  gtoAccessorTree x f = Data (datatypeName x) $ gtoAccessorTree (unM1 x) (unM1 . f)
 
 data Xyz = Xyz { xx :: Int
                , yy :: Double

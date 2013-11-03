@@ -15,6 +15,8 @@ import System.IO ( withFile, IOMode ( WriteMode ) )
 import qualified Data.Serialize as S
 import qualified Data.ByteString.Lazy as BSL
 
+import qualified GHC.Stats
+
 import Accessors ( makeAccessors )
 import PlotTypes ( Channel(..), PbTree, pbTreeToTree )
 import GraphWidget ( newGraph )
@@ -60,6 +62,13 @@ newChannel name pbTree = do
 
 runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
 runPlotter channels backgroundThreadsToKill = do
+  statsEnabled <- GHC.Stats.getGCStatsEnabled
+  if statsEnabled
+    then do putStrLn $ "stats enabled"
+            stats <- GHC.Stats.getGCStats
+            print stats
+    else putStrLn "stats not enabled"
+
   _ <- Gtk.initGUI
 
   -- start the main window

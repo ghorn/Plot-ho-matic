@@ -1,67 +1,68 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module Plotter ( newChannel, runPlotter, makeAccessors, Channel ) where
+module Plotter ( newChannel, runPlotter, Channel ) where
 
-import Control.Monad ( void )
 import qualified Control.Concurrent as CC
-import qualified Data.Foldable as F
-import Data.Sequence ( (|>) )
-import qualified Data.Sequence as Seq
+--import qualified Data.Foldable as F
+import Data.Tree ( Tree(..) )
 import Data.Time ( getCurrentTime, diffUTCTime )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
-import System.IO ( withFile, IOMode ( WriteMode ) )
-import qualified Data.Serialize as S
-import qualified Data.ByteString.Lazy as BSL
+--import System.IO ( withFile, IOMode ( WriteMode ) )
+--import qualified Data.ByteString.Lazy as BSL
 
 import qualified GHC.Stats
 
-import Accessors ( makeAccessors )
-import PlotTypes ( Channel(..), PbTree, pbTreeToTree )
+--import GAccessors ( AccessorTree )
+import PlotTypes ( Channel(..), PlotReal )
 import GraphWidget ( newGraph )
-import ReadMaybe ( readMaybe )
 
-data ListView = ListView { lvChan :: Channel
-                         , lvMaxHist :: Int
-                         }
-
-newChannel :: S.Serialize a => String -> PbTree a -> IO (Channel, a -> IO ())
-newChannel name pbTree = do
+newChannel ::
+  String ->
+  Tree (String, String, Maybe (a -> [[(PlotReal, PlotReal)]])) ->
+  IO (Channel a, a -> IO ())
+newChannel name getters = do
   time0 <- getCurrentTime
   
   seqChan <- CC.newChan
-  seqMv <- CC.newMVar Seq.empty
-  maxHistMv <- CC.newMVar (10000 :: Int)
+  seqMv <- CC.newEmptyMVar
 
-  let serverLoop k = do
-              -- wait until a new message is written to the Chan
+  -- this is the loop that reads new messages and stores them
+  let serverLoop :: Int -> IO ()
+      serverLoop k = do
+        -- wait until a new message is written to the Chan
         newMsg <- CC.readChan seqChan
         -- grab the timestamp
         time <- getCurrentTime
-        -- append this to the Seq in the MVar, dropping the excess old messages
-        maxNum <- CC.readMVar maxHistMv
-        let f seq0 = return $ Seq.drop (Seq.length seq0 + 1 - maxNum) (seq0 |> (newMsg, k, diffUTCTime time time0))
-        CC.modifyMVar_ seqMv f
+        -- write to the mvar
+        _ <- CC.swapMVar seqMv (newMsg, k, diffUTCTime time time0)
         -- loop forever
         serverLoop (k+1)
+
+      -- first time only, use putMVar instead of swapMVar
+      serverLoop0 :: IO ()
+      serverLoop0 = do
+        -- wait until a new message is written to the Chan
+        newMsg <- CC.readChan seqChan
+        -- grab the timestamp
+        time <- getCurrentTime
+        -- write to the mvar
+        CC.putMVar seqMv (newMsg, 0, diffUTCTime time time0)
+        -- loop forever
+        serverLoop 1
   
-  serverTid <- CC.forkIO $ serverLoop 0
+  serverTid <- CC.forkIO $ serverLoop0
   let retChan = Channel { chanName = name
-                        , chanGetters = pbTreeToTree name pbTree
-                        , chanSeq = seqMv
-                        , chanMaxHist = maxHistMv
+                        , chanGetters = getters
+                        , chanTraj = seqMv
                         , chanServerThreadId = serverTid
-                        , chanGetByteStrings = cgb
                         }
-      cgb = do
-        s <- CC.readMVar seqMv
-        return $ map (\(x,y,z) -> (S.encodeLazy x,y,z)) $ F.toList s
 
   return (retChan, CC.writeChan seqChan)
 
-runPlotter :: [Channel] -> [CC.ThreadId] -> IO ()
-runPlotter channels backgroundThreadsToKill = do
+runPlotter :: Channel a -> [CC.ThreadId] -> IO ()
+runPlotter channel backgroundThreadsToKill = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
   if statsEnabled
     then do putStrLn $ "stats enabled"
@@ -83,7 +84,7 @@ runPlotter channels backgroundThreadsToKill = do
         gws <- CC.readMVar graphWindowsToBeKilled
         mapM_ Gtk.widgetDestroy gws
         mapM_ CC.killThread backgroundThreadsToKill
-        mapM_ (CC.killThread . chanServerThreadId) channels
+        CC.killThread (chanServerThreadId channel)
         Gtk.mainQuit
   _ <- Gtk.onDestroy win killEverything
 
@@ -91,11 +92,12 @@ runPlotter channels backgroundThreadsToKill = do
   -- button to clear history
   buttonClear <- Gtk.buttonNewWithLabel "clear history"
   _ <- Gtk.onClicked buttonClear $ do
-    let clearChan (Channel {chanSeq=cs}) = void (CC.swapMVar cs Seq.empty)
-    mapM_ clearChan channels
+    --let clearChan (Channel {chanSeq=cs}) = void (CC.swapMVar cs Seq.empty)
+    let clearChan _ = putStrLn "yeah, history clear doesn't really exist lol"
+    clearChan channel
 
   -- list of channels
-  chanWidget <- newChannelWidget channels graphWindowsToBeKilled
+  chanWidget <- newChannelWidget channel graphWindowsToBeKilled
 
   -- vbox to hold buttons
   vbox <- Gtk.vBoxNew False 4
@@ -110,13 +112,10 @@ runPlotter channels backgroundThreadsToKill = do
 
 
 -- the list of channels
-newChannelWidget :: [Channel] -> CC.MVar [Gtk.Window] -> IO Gtk.TreeView
-newChannelWidget channels graphWindowsToBeKilled = do
+newChannelWidget :: Channel a -> CC.MVar [Gtk.Window] -> IO Gtk.TreeView
+newChannelWidget channel graphWindowsToBeKilled = do
   -- create a new tree model
-  let toListView ch = do
-        k <- CC.readMVar $ chanMaxHist ch
-        return ListView { lvChan = ch, lvMaxHist = k }
-  model <- mapM toListView channels >>= Gtk.listStoreNew
+  model <- Gtk.listStoreNew [channel]
   treeview <- Gtk.treeViewNewWithModel model
   Gtk.treeViewSetHeadersVisible treeview True
 
@@ -141,10 +140,7 @@ newChannelWidget channels graphWindowsToBeKilled = do
   Gtk.cellLayoutPackStart col2 renderer2 True
   Gtk.cellLayoutPackStart col3 renderer3 True
 
-  Gtk.cellLayoutSetAttributes col0 renderer0 model $ \lv -> [ Gtk.cellText := chanName (lvChan lv)]
-  Gtk.cellLayoutSetAttributes col1 renderer1 model $ \lv -> [ Gtk.cellText := show (lvMaxHist lv)
-                                                            , Gtk.cellTextEditable := True
-                                                            ]
+  Gtk.cellLayoutSetAttributes col0 renderer0 model $ \lv -> [ Gtk.cellText := chanName lv]
   Gtk.cellLayoutSetAttributes col2 renderer2 model $ const [ Gtk.cellToggleActive := False]
   Gtk.cellLayoutSetAttributes col3 renderer3 model $ const [ Gtk.cellToggleActive := False]
 
@@ -158,51 +154,31 @@ newChannelWidget channels graphWindowsToBeKilled = do
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     let (i:_) = Gtk.stringToTreePath pathStr
     lv <- Gtk.listStoreGetValue model i
-    graphWin <- newGraph (lvChan lv)
+    graphWin <- newGraph (chanName lv) (chanGetters lv) (chanTraj lv)
     
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
 
 
-  -- save all channel data when this button is pressed
-  _ <- on renderer3 Gtk.cellToggled $ \pathStr -> do
-    let (i:_) = Gtk.stringToTreePath pathStr
-    lv <- Gtk.listStoreGetValue model i
-    let writerThread = do
-          bct <- chanGetByteStrings (lvChan lv)
-          let filename = chanName (lvChan lv) ++ "_log.dat"
-              blah _      sizes [] = return (reverse sizes)
-              blah handle sizes ((x,_,_):xs) = do
-                BSL.hPut handle x
-                blah handle (BSL.length x : sizes) xs
-          putStrLn $ "trying to write file \"" ++ filename ++ "\"..."
-          sizes <- withFile filename WriteMode $ \handle -> blah handle [] bct
-          putStrLn $ "finished writing file, wrote " ++ show (length sizes) ++ " protos"
-
-          putStrLn "writing file with sizes..."
-          writeFile (filename ++ ".sizes") (unlines $ map show sizes)
-          putStrLn "done"
-    _ <- CC.forkIO writerThread
+--  -- save all channel data when this button is pressed
+--  _ <- on renderer3 Gtk.cellToggled $ \pathStr -> do
+--    let (i:_) = Gtk.stringToTreePath pathStr
+--    lv <- Gtk.listStoreGetValue model i
+--    let writerThread = do
+--          bct <- chanGetByteStrings (lvChan lv)
+--          let filename = chanName (lvChan lv) ++ "_log.dat"
+--              blah _      sizes [] = return (reverse sizes)
+--              blah handle sizes ((x,_,_):xs) = do
+--                BSL.hPut handle x
+--                blah handle (BSL.length x : sizes) xs
+--          putStrLn $ "trying to write file \"" ++ filename ++ "\"..."
+--          sizes <- withFile filename WriteMode $ \handle -> blah handle [] bct
+--          putStrLn $ "finished writing file, wrote " ++ show (length sizes) ++ " protos"
+--
+--          putStrLn "writing file with sizes..."
+--          writeFile (filename ++ ".sizes") (unlines $ map show sizes)
+--          putStrLn "done"
+--    _ <- CC.forkIO writerThread
     return ()
-
-
-  -- how long to make the history
-  _ <- on renderer1 Gtk.edited $ \treePath txt -> do
-    let (i:_) = treePath
-    lv <- Gtk.listStoreGetValue model i
-    case readMaybe txt of
-      Nothing -> do
-        putStrLn $ "invalid non-integer range entry: " ++ txt
-        k0 <- CC.readMVar $ chanMaxHist (lvChan lv)
-        Gtk.listStoreSetValue model i (lv {lvMaxHist = k0})
-      Just k -> if k < 0
-                then do
-                  putStrLn $ "invalid negative range entry: " ++ txt
-                  k0 <- CC.readMVar $ chanMaxHist (lvChan lv)
-                  Gtk.listStoreSetValue model i (lv {lvMaxHist = k0})
-                else do
-                  _ <- CC.swapMVar (chanMaxHist (lvChan lv)) k
-                  Gtk.listStoreSetValue model i (lv {lvMaxHist = k})
-                  return ()
 
   return treeview

@@ -4,19 +4,21 @@ module GraphWidget ( newGraph ) where
 
 import qualified Control.Concurrent as CC
 import Control.Monad ( unless )
-import Data.Maybe ( mapMaybe, isJust, fromJust )
+import Data.Maybe ( isJust, fromJust )
 import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
+--import Data.Sequence ( Seq )
+import Data.Time ( NominalDiffTime )
 import System.Glib.Signals ( on )
 
-import PlotTypes ( Channel(..), XAxisType(..), PbPrim )
+import PlotTypes ( PlotReal)
 import PlotChart ( GraphInfo(..), AxisScaling(..), newChartCanvas )
 import ReadMaybe ( readMaybe )
 
 data ListViewInfo a = ListViewInfo { lviName :: String
                                    , lviFullName :: String
-                                   , lviGetter :: Maybe (a -> PbPrim)
+                                   , lviGetter :: Maybe (a -> [[(PlotReal,PlotReal)]])
                                    , lviMarked :: Bool
                                    }
 
@@ -33,18 +35,18 @@ labeledWidget name widget = do
 
 
 -- make a new graph window
-newGraph :: Channel -> IO Gtk.Window
-newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
+newGraph :: String -> Tree.Tree (String, String, Maybe (a -> [[(PlotReal,PlotReal)]]))
+         -> CC.MVar (a, Int, NominalDiffTime)
+         -> IO Gtk.Window
+newGraph channame changetters chanseq = do
   win <- Gtk.windowNew
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
-                   , Gtk.windowTitle := chanName chan
+                   , Gtk.windowTitle := channame
                    ]
 
   -- mvar with everything the graphs need to plot
   graphInfoMVar <- CC.newMVar GraphInfo { giData = chanseq
-                                        , giLen = 0 -- changed immediately
-                                        , giXAxis = XAxisStaticCounter
                                         , giXScaling = LinearScaling
                                         , giYScaling = LinearScaling
                                         , giXRange = Nothing
@@ -53,7 +55,7 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
                                         }
                    
   -- the thing where users select stuff
-  options' <- makeOptionsWidget graphInfoMVar changetters
+  options' <- makeOptionsWidget graphInfoMVar
   options <- Gtk.expanderNew "options"
   Gtk.set options [ Gtk.containerChild := options'
                   , Gtk.expanderExpanded := True
@@ -89,59 +91,8 @@ newGraph chan@(Channel {chanGetters = changetters, chanSeq = chanseq}) = do
   return win
 
 
-makeOptionsWidget :: CC.MVar (GraphInfo a) -> Tree.Tree (String, String, Maybe (a -> PbPrim))
-                     -> IO Gtk.VBox
-makeOptionsWidget graphInfoMVar changetters = do
-  -- how many to show?
-  plotLength <- Gtk.entryNew
-  plotLengthBox <- labeledWidget "# points to plot:" plotLength
-  
-  Gtk.set plotLength [Gtk.entryText := "100"]
-  let updatePlotLength = do
-        txt <- Gtk.get plotLength Gtk.entryText
-        gi <- CC.readMVar graphInfoMVar
-        case readMaybe txt of
-          Nothing -> do
-            putStrLn $ "invalid non-integer range entry: " ++ txt
-            Gtk.set plotLength [Gtk.entryText := show (giLen gi)]
-          Just k -> if k < 0
-                    then do
-                      putStrLn $ "invalid negative range entry: " ++ txt
-                      Gtk.set plotLength [Gtk.entryText := show (giLen gi)]
-                      return ()
-                    else do
-                      _ <- CC.swapMVar graphInfoMVar (gi {giLen = k})
-                      return ()
-  updatePlotLength
-  _ <- on plotLength Gtk.entryActivate updatePlotLength
-
-  -- which one is the x axis?
-  xaxisSelector <- Gtk.comboBoxNewText
-  let xaxisSelectorStrings = ["(static counter)","(counter)","(timestamp)"]
-  mapM_ (Gtk.comboBoxAppendText xaxisSelector) xaxisSelectorStrings
-  let f (_,_,Nothing) = Nothing
-      f (_,x,Just y) = Just (x,y)
-      xaxisGetters = mapMaybe f (Tree.flatten changetters)
-  mapM_ (Gtk.comboBoxAppendText xaxisSelector. fst) xaxisGetters
-  Gtk.comboBoxSetActive xaxisSelector 0
-  xaxisBox <- labeledWidget "x axis:" xaxisSelector
-
-  let updateXAxis = do
-        k <- Gtk.comboBoxGetActive xaxisSelector
-        _ <- case k of
-          0 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisStaticCounter}
-          1 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisCounter}
-          2 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisTime}
-          _ -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxis = XAxisFun (xaxisGetters !! (k - length xaxisSelectorStrings))}
-        return ()
-  updateXAxis
-  _ <- on xaxisSelector Gtk.changed updateXAxis
-
-
+makeOptionsWidget :: CC.MVar (GraphInfo a) -> IO Gtk.VBox
+makeOptionsWidget graphInfoMVar = do
   -- user selectable range
   xRange <- Gtk.entryNew
   yRange <- Gtk.entryNew
@@ -255,11 +206,7 @@ makeOptionsWidget graphInfoMVar changetters = do
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
   
-  Gtk.set vbox [ Gtk.containerChild := plotLengthBox
-               , Gtk.boxChildPacking   plotLengthBox := Gtk.PackNatural
-               , Gtk.containerChild := xaxisBox
-               , Gtk.boxChildPacking   xaxisBox := Gtk.PackNatural
-               , Gtk.containerChild := xScalingBox
+  Gtk.set vbox [ Gtk.containerChild := xScalingBox
                , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
                , Gtk.containerChild := xRangeBox
                , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
@@ -272,7 +219,7 @@ makeOptionsWidget graphInfoMVar changetters = do
   return vbox
 
 
-newTreeViewArea :: Tree.Tree (String, String, Maybe (a -> PbPrim))
+newTreeViewArea :: Tree.Tree (String, String, Maybe (a -> [[(PlotReal,PlotReal)]]))
                    -> CC.MVar (GraphInfo a) -> IO Gtk.ScrolledWindow
 newTreeViewArea changetters graphInfoMVar = do
   let mkTreeNode (name,fullName,maybeget) = ListViewInfo name fullName maybeget False

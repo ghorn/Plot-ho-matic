@@ -1,12 +1,14 @@
 {-# OPTIONS_GHC -Wall #-}
+--{-# OPTIONS_GHC -ddump-deriv #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
---{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric #-}
 
-module GAccessors ( AccessorTree(..), accessors ) where
+module GAccessors ( Generic, Lookup(..), AccessorTree(..), accessors, flatten ) where
 
+import Data.List ( intercalate )
 import GHC.Generics
 
 showAccTree :: String -> AccessorTree a -> [String]
@@ -27,6 +29,18 @@ data AccessorTree a = Data (String,String) [(String, AccessorTree a)]
 
 accessors :: Lookup a => a -> AccessorTree a
 accessors = flip toAccessorTree id
+
+showMsgs :: [String] -> String
+showMsgs = intercalate "."
+
+flatten :: AccessorTree a -> [(String, a -> Double)]
+flatten = flatten' []
+
+flatten' :: [String] -> AccessorTree a -> [(String, a -> Double)]
+flatten' msgs (Getter f) = [(showMsgs (reverse msgs), f)]
+flatten' msgs (Data (_,_) trees) = concatMap f trees
+  where
+    f (name,tree) = flatten' (name:msgs) tree
 
 class Lookup a where
   toAccessorTree :: a -> (b -> a) -> AccessorTree b
@@ -80,5 +94,6 @@ instance (Datatype d, Constructor c, GLookupS a) => GLookup (D1 d (C1 c a)) wher
 --instance Lookup One
 --instance Lookup Xyz
 --instance Lookup Foo
+--
 --foo :: Foo
 --foo = Foo 2 (Xyz 6 7 8 9) (MkOne 17)

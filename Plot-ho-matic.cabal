@@ -1,5 +1,5 @@
 name:                Plot-ho-matic
-version:             0.2.0.0
+version:             0.3.0.0
 synopsis:            Real-time line plotter for protobuf-like data
 license:             BSD3
 license-file:        LICENSE
@@ -24,9 +24,9 @@ library
   hs-source-dirs:    src
 --                     Example,
   exposed-modules:   Plotter
-  other-modules:     Accessors,
-                     GAccessors,
-                     GraphWidget,
+  other-modules:     GraphWidget,
+--                     Accessors,
+--                     GAccessors,
                      PlotChart,
                      PlotTypes,
                      ReadMaybe

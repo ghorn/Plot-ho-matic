@@ -117,20 +117,20 @@ displayChart (xScaling,yScaling) (xRange,yRange) xaxisName xaxis namePcs = Chart
     allLines = zipWith drawOne namePcs Chart.defaultColorSeq
 
     xscaleFun = case xScaling of
-      LogScaling -> Chart.layout1_bottom_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
+      LogScaling -> Chart.layout_x_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
       LinearScaling -> case xRange of
         Nothing -> id
-        Just range -> Chart.layout1_bottom_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
+        Just range -> Chart.layout_x_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
 
     yscaleFun = case yScaling of
-      LogScaling -> Chart.layout1_left_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
+      LogScaling -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
       LinearScaling -> case yRange of
         Nothing -> id
-        Just range -> Chart.layout1_left_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
+        Just range -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
 
-    layout = Chart.layout1_plots .~ map (Left . Chart.toPlot) allLines
---             $ Chart.layout1_title .~ "Wooo, Party Graph!"
-             $ Chart.layout1_bottom_axis . Chart.laxis_title .~ xaxisName
+    layout = Chart.layout_plots .~ map Chart.toPlot allLines
+--             $ Chart.layout_title .~ "Wooo, Party Graph!"
+             $ Chart.layout_x_axis . Chart.laxis_title .~ xaxisName
              $ xscaleFun
              $ yscaleFun
              def

@@ -38,8 +38,8 @@ library
                      time,
                      containers,
                      template-haskell,
-                     Chart >= 1.0,
-                     Chart-gtk >= 1.0,
+                     Chart >= 1.1,
+                     Chart-gtk >= 1.1,
                      data-default-class,
                      lens,
                      transformers

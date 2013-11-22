@@ -1,117 +1,105 @@
 {-# OPTIONS_GHC -Wall #-}
-{-# Language TemplateHaskell #-}
-{-# Language ExistentialQuantification #-}
+--{-# OPTIONS_GHC -ddump-deriv #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 
-module Accessors ( makeAccessors ) where
+module Accessors ( Generic, Lookup(..), AccessorTree(..), accessors, flatten ) where
 
-import Data.Map ( Map )
-import qualified Data.Map as M
-import Data.Maybe ( fromMaybe )
-import Language.Haskell.TH
-import qualified Data.Sequence as S
+import Data.List ( intercalate )
+import GHC.Generics
 
-import PlotTypes ( PbTree(..), PbPrim(..) )
+showAccTree :: String -> AccessorTree a -> [String]
+showAccTree spaces (Getter _) = [spaces ++ "Getter {}"]
+showAccTree spaces (Data name trees) =
+  [spaces ++ "Data " ++ show name] ++
+  concatMap (showChild (spaces ++ "    ")) trees
 
-data AccessorTree = APrim ExpQ
-                  | AStruct [(Name,AccessorTree)]
-                  | ASeq AccessorTree
-                  | AMaybe AccessorTree
+showChild :: String -> (String, AccessorTree a) -> [String]
+showChild spaces (name, tree) =
+  [spaces ++ name] ++ (showAccTree (spaces ++ "    ") tree)
 
-atToPbt :: ExpQ -> AccessorTree -> ExpQ
-atToPbt getDouble (APrim pbCon) = [| PbtGetter ($pbCon . $getDouble) |]
-atToPbt getStruct (AStruct forest) = [| PbtStruct (zip strNames $forestQ) |]
+instance Show (AccessorTree a) where
+  show = unlines . showAccTree ""
+
+data AccessorTree a = Data (String,String) [(String, AccessorTree a)]
+                    | Getter (a -> Double)
+
+accessors :: Lookup a => a -> AccessorTree a
+accessors = flip toAccessorTree id
+
+showMsgs :: [String] -> String
+showMsgs = intercalate "."
+
+flatten :: AccessorTree a -> [(String, a -> Double)]
+flatten = flatten' []
+
+flatten' :: [String] -> AccessorTree a -> [(String, a -> Double)]
+flatten' msgs (Getter f) = [(showMsgs (reverse msgs), f)]
+flatten' msgs (Data (_,_) trees) = concatMap f trees
   where
-    forestQ = listE $ zipWith (\n t -> atToPbt [| $(varE n) . $getStruct |] t) names trees
-    (names,trees) = unzip forest
-    strNames = map nameBase names
-atToPbt getSeq   (ASeq   pbf) =
-  [| PbtFunctor PbSeq   $getSeq   $(atToPbt [| id |] pbf) (\x -> "["++x++"]")|]
-atToPbt getMaybe (AMaybe pbf) =
-  [| PbtFunctor PbMaybe $getMaybe $(atToPbt [| id |] pbf) (\x -> "("++x++")")|]
+    f (name,tree) = flatten' (name:msgs) tree
 
+class Lookup a where
+  toAccessorTree :: a -> (b -> a) -> AccessorTree b
 
-pbPrimMap :: Map Name ExpQ
-pbPrimMap =
-  M.fromList [ (''Double       , [| PbDouble |])
-             , (''Float        , [| PbFloat |])
---             , (''P'.Int32     , [| PbInt32 |])
---             , (''P'.Int32      , [| PbInt64 |])
-             , (''Int          , [| PbInt |])
---             , (''P'.Word32    , [| PbWord32 |])
---             , (''P'.Word64    , [| PbWord64 |])
-             , (''Bool         , [| PbBool |])
---             , (''P'.Utf8      , [| PbUtf8 |])
---             , (''P'.ByteString, [| PbByteString |])
-             ]
-getPbPrim :: Name -> Q (Maybe ExpQ)
-getPbPrim name = case M.lookup name pbPrimMap of
-  x@(Just _) -> return x
-  Nothing -> do
-    isEnum <- isInstance ''Enum [ConT name]
-    return $ if isEnum
-      then Just [| PbEnum . (\x -> (fromEnum x, show x)) |]
-      else Nothing
+  default toAccessorTree :: (Generic a, GLookup (Rep a)) => a -> (b -> a) -> AccessorTree b
+  toAccessorTree x f = gtoAccessorTree (from x) (from . f)
 
+class GLookup f where
+  gtoAccessorTree :: f a -> (b -> f a) -> AccessorTree b
 
--- | take a constructor field and return usable stuff
-handleField :: Type -> Q AccessorTree
-handleField (ConT type') = do
-  let safeGetInfo :: Q [Con]
-      safeGetInfo = do
-        info <- reify type'
-        case info of
-          (TyConI (DataD _ _ _ [constructor] _ )) -> return [constructor]
-          (TyConI (NewtypeD _ _ _ constructor _ )) -> return [constructor]
-          (TyConI (DataD _ _ _ constructors _ )) -> return constructors
-          d -> error $ "handleField: safeGetInfo got unsafe info: " ++ show d
-  constructors <- safeGetInfo
-  case constructors of
-    -- recursive protobuf
-    [RecC _ varStrictTypes] -> do
-      let (names,types) = unzip $ map (\(x,_,z) -> (x,z)) varStrictTypes
-      outputs  <- mapM handleField types
-      return $ AStruct (zip names outputs)
+class GLookupS f where
+  gtoAccessorTreeS :: f a -> (b -> f a) -> [(String, AccessorTree b)]
 
-    -- empty protobuf
-    [NormalC _ []] -> return (AStruct [])
+instance Lookup Float where
+  toAccessorTree _ f = Getter $ realToFrac . f
+instance Lookup Double where
+  toAccessorTree _ f = Getter $ realToFrac . f
+instance Lookup Int where
+  toAccessorTree _ f = Getter $ fromIntegral . f
 
-    -- everything else
-    xx -> do
-      maybePrim <- getPbPrim type'
-      let msg = "can't find appropriate PbPrim for " ++ show type' ++ "\n" ++ show xx
-          con = fromMaybe (error msg) maybePrim
+instance (Lookup f, Generic f) => GLookup (Rec0 f) where
+  gtoAccessorTree x f = toAccessorTree (unK1 x) (unK1 . f)
 
-      return (APrim con)
--- handle optional fields
-handleField x@(AppT (ConT con) (ConT type'))
-  | con == ''Maybe = fmap AMaybe $ handleField (ConT type')
-  | con == ''S.Seq = fmap ASeq   $ handleField (ConT type')
-  | otherwise = error $ "handleField (AppT ...): can't handle constructor "++show con++" in "++show x
-handleField x = error $ "handleField _: unhandled case: " ++ show x
+instance (Selector s, GLookup a) => GLookupS (S1 s a) where
+  gtoAccessorTreeS x f = [(selname, gtoAccessorTree (unM1 x) (unM1 . f))]
+    where
+      selname = case selName x of
+        [] -> "()"
+        y -> y
 
+instance GLookupS U1 where
+  gtoAccessorTreeS _ _ = []
 
--- | Take a constructor with multiple fields, call handleFields on each of them,
---   assemble the result
-handleConstructor :: Con -> Q AccessorTree
-handleConstructor (RecC _ varStrictTypes) = do
-  let (names,types) = unzip $ map (\(x,_,z) -> (x,z)) varStrictTypes
-  outputs  <- mapM handleField types
-  return (AStruct (zip names outputs))
-handleConstructor x = fail $ "\"" ++ show x ++ "\" is not a record syntax constructor"
+instance (GLookupS f, GLookupS g) => GLookupS (f :*: g) where
+  gtoAccessorTreeS (x :*: y) f = tf ++ tg
+    where
+      tf = gtoAccessorTreeS x $ left . f
+      tg = gtoAccessorTreeS y $ right . f
 
+      left  ( x' :*: _  ) = x'
+      right ( _  :*: y' ) = y'
 
-makeAccessors :: Name -> Q Exp
-makeAccessors typ = do
-  -- get the type info
-  let safeGetInfo :: Q Info
-      safeGetInfo = do
-      info <- reify typ
-      case info of
-        d@(TyConI (DataD _ _ _ [_] _ )) -> return d
-        (TyConI (DataD _ typeName _ constructors _ )) ->
-           error $ "setupTelem: too many constructors: " ++ show (typeName, constructors)
-        d -> error $ "setupTelem: safeGetInfo got unsafe info: " ++ show d
-  TyConI (DataD _ _typeName _ [constructor] _ ) <- safeGetInfo
+instance (Datatype d, Constructor c, GLookupS a) => GLookup (D1 d (C1 c a)) where
+  gtoAccessorTree d@(M1 c) f = Data (datatypeName d, conName c) con
+    where
+      con = gtoAccessorTreeS (unM1 c) (unM1 . unM1 . f)
 
-  outputs' <- handleConstructor constructor
-  atToPbt [| id |] outputs'
+--data Xyz = Xyz { xx :: Int
+--               , yy :: Double
+--               , zz :: Float
+--               , ww :: Int
+--               } deriving (Generic)
+--data One = MkOne { one :: Double } deriving (Generic)
+--data Foo = Foo { aaa :: Int
+--               , bbb :: Xyz
+--               , ccc :: One
+--               } deriving (Generic)
+--instance Lookup One
+--instance Lookup Xyz
+--instance Lookup Foo
+--
+--foo :: Foo
+--foo = Foo 2 (Xyz 6 7 8 9) (MkOne 17)

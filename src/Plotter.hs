@@ -1,6 +1,10 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module Plotter ( newChannel, runPlotter, Channel ) where
+module Plotter ( newChannel
+               , runPlotter
+               , Channel
+               , module Accessors
+               ) where
 
 import qualified Control.Concurrent as CC
 --import qualified Data.Foldable as F
@@ -14,7 +18,7 @@ import System.Glib.Signals ( on )
 
 import qualified GHC.Stats
 
---import GAccessors ( AccessorTree )
+import Accessors
 import PlotTypes ( Channel(..), PlotReal )
 import GraphWidget ( newGraph )
 

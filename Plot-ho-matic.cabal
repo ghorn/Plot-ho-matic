@@ -16,8 +16,6 @@ extra-source-files:
   README.md
 description: {
 Plot-ho-matic provides real-time plotting of time-series data with a simple interface.
-.
-Changelo
 }
 
 library
@@ -25,25 +23,19 @@ library
 --                     Example,
   exposed-modules:   Plotter
   other-modules:     GraphWidget,
---                     Accessors,
---                     GAccessors,
+                     Accessors,
                      PlotChart,
                      PlotTypes,
                      ReadMaybe
   build-depends:     base >= 4.5.0 && < 4.7,
-                     bytestring,
-                     cereal,
                      glib,
                      gtk,
                      time,
                      containers,
-                     template-haskell,
                      Chart >= 1.1,
                      Chart-gtk >= 1.1,
                      data-default-class,
-                     lens,
-                     transformers
+                     lens
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts
-  other-extensions: TemplateHaskell

@@ -27,7 +27,7 @@ library
                      PlotChart,
                      PlotTypes,
                      ReadMaybe
-  build-depends:     base >= 4.5.0 && < 4.7,
+  build-depends:     base >= 4.5.0 && < 5,
                      glib,
                      gtk,
                      time,

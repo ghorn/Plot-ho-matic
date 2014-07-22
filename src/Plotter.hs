@@ -22,6 +22,7 @@ import System.Glib.Signals ( on )
 --import System.IO ( withFile, IOMode ( WriteMode ) )
 --import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Tree as Tree
+import Text.Printf ( printf )
 
 import Control.Applicative ( Applicative(..), liftA2 )
 
@@ -157,11 +158,6 @@ newChannel name signalTree0 action = do
 runPlotter :: Plotter () -> IO ()
 runPlotter plotterMonad = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
-  if statsEnabled
-    then do putStrLn "stats enabled"
-            stats <- GHC.Stats.getGCStats
-            print stats
-    else putStrLn "stats not enabled"
 
   _ <- Gtk.initGUI
 
@@ -180,7 +176,23 @@ runPlotter plotterMonad = do
 
   chanWidgets <- mapM (\x -> x graphWindowsToBeKilled) windows
 
+  -- ghc stats
+  statsLabel <- Gtk.labelNew Nothing
+  let statsWorker = do
+        CC.threadDelay 500000
+        msg <- if statsEnabled
+               then do
+                 stats <- GHC.Stats.getGCStats
+                 return $ printf "The current memory usage is %.2f MB"
+                   ((realToFrac (GHC.Stats.currentBytesUsed stats) :: Double) /(1024*1024))
+               else return "(enable GHC statistics with +RTS -T)"
+        Gtk.postGUISync $ Gtk.labelSetText statsLabel ("Welcome to Plot-ho-matic!\n" ++ msg)
+        statsWorker
+
+  statsThread <- CC.forkIO statsWorker
+
   let killEverything = do
+        CC.killThread statsThread
         gws <- CC.readMVar graphWindowsToBeKilled
         mapM_ Gtk.widgetDestroy gws
         mapM_ csKillThreads channels
@@ -193,10 +205,15 @@ runPlotter plotterMonad = do
   _ <- Gtk.onClicked buttonClear $ do
     mapM_ csClearChan channels
 
+
+
   -- vbox to hold buttons
   vbox <- Gtk.vBoxNew False 4
   Gtk.set vbox $
-    [ Gtk.containerChild := buttonClear
+    [ Gtk.containerChild := statsLabel
+    , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
+    , Gtk.containerChild := buttonClear
+    , Gtk.boxChildPacking buttonClear := Gtk.PackNatural
     ] ++ concatMap (\x -> [Gtk.containerChild := x
                           , Gtk.boxChildPacking x := Gtk.PackNatural
                           ]) chanWidgets

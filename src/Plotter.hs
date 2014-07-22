@@ -1,75 +1,114 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# Language ScopedTypeVariables #-}
 
-module Plotter ( newChannel
-               , runPlotter
-               , Channel
-               , module Accessors
-               ) where
+module Plotter
+       ( Lookup
+       , Channel
+       , SignalTree
+       , AccessorTree(..)
+       , newChannel
+       , makeSignalTree
+       , runPlotter
+       , accessors
+       ) where
 
+import qualified Data.Sequence as S
 import qualified Control.Concurrent as CC
---import qualified Data.Foldable as F
-import Data.Tree ( Tree(..) )
+import qualified Control.Concurrent.STM as STM
 import Data.Time ( getCurrentTime, diffUTCTime )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 --import System.IO ( withFile, IOMode ( WriteMode ) )
 --import qualified Data.ByteString.Lazy as BSL
+import qualified Data.Tree as Tree
 
 import qualified GHC.Stats
 
+import PlotTypes --( Channel(..), SignalTree )
 import Accessors
-import PlotTypes ( Channel(..), PlotReal )
 import GraphWidget ( newGraph )
 
-newChannel ::
-  String ->
-  Tree (String, String, Maybe (a -> [[(PlotReal, PlotReal)]])) ->
-  IO (Channel a, a -> IO ())
-newChannel name getters = do
-  time0 <- getCurrentTime
-  
-  seqChan <- CC.newChan
-  seqMv <- CC.newEmptyMVar
+makeSignalTree :: Lookup a => a -> SignalTree a
+makeSignalTree x = case accessors x of
+  (ATGetter _) -> error "makeSignalTree: got an accessor right away"
+  d -> Tree.subForest $ head $ makeSignalTree' "" "" d
+  where
+    makeSignalTree' :: String -> String -> AccessorTree a -> SignalTree a
+    makeSignalTree' myName parentName (Data (pn,_) children) =
+      [Tree.Node
+       (myName, parentName, Nothing)
+       (concatMap (\(getterName,child) -> makeSignalTree' getterName pn child) children)
+      ]
+    makeSignalTree' myName parentName (ATGetter getter) =
+      [Tree.Node (myName, parentName, Just (Left getter)) []]
 
+
+--newChannel :: SignalTree a -> Plotter (a -> IO (), SignalTree a -> IO ())
+newChannel :: forall a .
+              String -> SignalTree a -> IO (Channel a, a -> IO (), SignalTree a -> IO ())
+newChannel name signalTree0 = do
+  time0 <- getCurrentTime
+
+  trajChan <- STM.atomically STM.newTQueue
+  trajMv <- CC.newMVar S.empty
+  maxHistMv <- CC.newMVar 200
+
+  signalTreeStore <- Gtk.listStoreNew []
+
+  let getLastValue :: IO a
+      getLastValue = do
+        val <- STM.atomically (STM.readTQueue trajChan)
+        empty <- STM.atomically (STM.isEmptyTQueue trajChan)
+        if empty then return val else getLastValue
+  
+
+  let rebuildSignalTree newSignalTree = do
+        --putStrLn $ "rebuilding signal tree"
+        size <- Gtk.listStoreGetSize signalTreeStore
+        if size == 0
+          then Gtk.listStorePrepend signalTreeStore newSignalTree
+          else Gtk.listStoreSetValue signalTreeStore 0 newSignalTree
+              
   -- this is the loop that reads new messages and stores them
   let serverLoop :: Int -> IO ()
       serverLoop k = do
         -- wait until a new message is written to the Chan
-        newMsg <- CC.readChan seqChan
+        newPoint0 <- getLastValue
+
         -- grab the timestamp
         time <- getCurrentTime
+
         -- write to the mvar
-        _ <- CC.swapMVar seqMv (newMsg, k, diffUTCTime time time0)
+        maxHist <- CC.readMVar maxHistMv
+        let newPoint = (newPoint0, k, diffUTCTime time time0)
+            addPoint lst0
+              | S.length lst0 < maxHist = lst0 S.|> newPoint
+              | otherwise = case S.viewl lst0 of
+                S.EmptyL -> S.singleton newPoint
+                _ S.:< lst' -> lst' S.|> newPoint
+        _ <- CC.modifyMVar_ trajMv (return . addPoint)
+        return ()
+
         -- loop forever
         serverLoop (k+1)
 
-      -- first time only, use putMVar instead of swapMVar
-      serverLoop0 :: IO ()
-      serverLoop0 = do
-        -- wait until a new message is written to the Chan
-        newMsg <- CC.readChan seqChan
-        -- grab the timestamp
-        time <- getCurrentTime
-        -- write to the mvar
-        CC.putMVar seqMv (newMsg, 0, diffUTCTime time time0)
-        -- loop forever
-        serverLoop 1
-  
-  serverTid <- CC.forkIO $ serverLoop0
+  rebuildSignalTree signalTree0
+  serverTid <- CC.forkIO (serverLoop 0)
   let retChan = Channel { chanName = name
-                        , chanGetters = getters
-                        , chanTraj = seqMv
+                        , chanTraj = trajMv
+                        , chanSignalTreeStore = signalTreeStore
                         , chanServerThreadId = serverTid
+                        , chanMaxHist = maxHistMv
                         }
 
-  return (retChan, CC.writeChan seqChan)
+  return (retChan, STM.atomically . STM.writeTQueue trajChan, Gtk.postGUISync . rebuildSignalTree)
 
 runPlotter :: Channel a -> [CC.ThreadId] -> IO ()
 runPlotter channel backgroundThreadsToKill = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
   if statsEnabled
-    then do putStrLn $ "stats enabled"
+    then do putStrLn "stats enabled"
             stats <- GHC.Stats.getGCStats
             print stats
     else putStrLn "stats not enabled"
@@ -148,7 +187,7 @@ newChannelWidget channel graphWindowsToBeKilled = do
   Gtk.cellLayoutSetAttributes col2 renderer2 model $ const [ Gtk.cellToggleActive := False]
   Gtk.cellLayoutSetAttributes col3 renderer3 model $ const [ Gtk.cellToggleActive := False]
 
-  
+
   _ <- Gtk.treeViewAppendColumn treeview col0
   _ <- Gtk.treeViewAppendColumn treeview col1
   _ <- Gtk.treeViewAppendColumn treeview col2
@@ -158,8 +197,8 @@ newChannelWidget channel graphWindowsToBeKilled = do
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
     let (i:_) = Gtk.stringToTreePath pathStr
     lv <- Gtk.listStoreGetValue model i
-    graphWin <- newGraph (chanName lv) (chanGetters lv) (chanTraj lv)
-    
+    graphWin <- newGraph (chanName lv) (chanSignalTreeStore lv) (chanTraj lv)
+
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
 

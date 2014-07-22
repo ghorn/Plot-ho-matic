@@ -1,44 +1,33 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# Language ScopedTypeVariables #-}
 
-module GraphWidget ( newGraph ) where
+-- | This module manages the widget which lets the user click signals and stuff
 
+module GraphWidget
+       ( newGraph
+       ) where
+
+import Data.Maybe (fromJust, isJust)
 import qualified Control.Concurrent as CC
-import Control.Monad ( unless )
-import Data.Maybe ( isJust, fromJust )
+import Control.Monad ( when, unless )
+import qualified Data.Sequence as S
 import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
---import Data.Sequence ( Seq )
 import Data.Time ( NominalDiffTime )
 import System.Glib.Signals ( on )
 
-import PlotTypes ( PlotReal)
-import PlotChart ( GraphInfo(..), AxisScaling(..), newChartCanvas )
+import PlotChart ( GraphInfo(..), AxisScaling(..), XAxisType(..), newChartCanvas )
+import PlotTypes ( SignalTree, ListViewInfo(..), Getter )
 import ReadMaybe ( readMaybe )
 
-data ListViewInfo a = ListViewInfo { lviName :: String
-                                   , lviFullName :: String
-                                   , lviGetter :: Maybe (a -> [[(PlotReal,PlotReal)]])
-                                   , lviMarked :: Bool
-                                   }
-
-labeledWidget :: Gtk.WidgetClass a => String -> a -> IO Gtk.HBox
-labeledWidget name widget = do
-  label <- Gtk.labelNew (Just name)
-  hbox <- Gtk.hBoxNew False 4
-  Gtk.set hbox [ Gtk.containerChild := label
-               , Gtk.containerChild := widget
-               , Gtk.boxChildPacking label := Gtk.PackNatural
---               , Gtk.boxChildPacking widget := Gtk.PackNatural
-               ]
-  return hbox
-
-
 -- make a new graph window
-newGraph :: String -> Tree.Tree (String, String, Maybe (a -> [[(PlotReal,PlotReal)]]))
-         -> CC.MVar (a, Int, NominalDiffTime)
-         -> IO Gtk.Window
-newGraph channame changetters chanseq = do
+newGraph ::
+  String ->
+  Gtk.ListStore (SignalTree a) ->
+  CC.MVar (S.Seq (a, Int, NominalDiffTime)) ->
+  IO Gtk.Window
+newGraph channame signalTreeStore chanseq = do
   win <- Gtk.windowNew
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
@@ -51,44 +40,143 @@ newGraph channame changetters chanseq = do
                                         , giYScaling = LinearScaling
                                         , giXRange = Nothing
                                         , giYRange = Nothing
+                                        , giXAxisType = XAxisCounter
                                         , giGetters = []
                                         }
-                   
-  -- the thing where users select stuff
-  options' <- makeOptionsWidget graphInfoMVar
+
+  -- the options widget
+  optionsWidget <- makeOptionsWidget graphInfoMVar
   options <- Gtk.expanderNew "options"
-  Gtk.set options [ Gtk.containerChild := options'
-                  , Gtk.expanderExpanded := True
+  Gtk.set options [ Gtk.containerChild := optionsWidget
+                  , Gtk.expanderExpanded := False
                   ]
-  
-  
-  -- create a new tree model
-  treeview' <- newTreeViewArea changetters graphInfoMVar
+
+  -- the signal selector
+  treeview' <- newSignalSelectorArea graphInfoMVar signalTreeStore
   treeview <- Gtk.expanderNew "signals"
   Gtk.set treeview [ Gtk.containerChild := treeview'
                    , Gtk.expanderExpanded := True
                    ]
-  
-  vbox <- Gtk.vBoxNew False 4
-  Gtk.set vbox [ Gtk.containerChild := options
-               , Gtk.boxChildPacking options := Gtk.PackNatural
-               , Gtk.containerChild := treeview
-               , Gtk.boxChildPacking treeview := Gtk.PackGrow
-               ]
-    
+
+  -- options and signal selector packed in vbox
+  vboxOptionsAndSignals <- Gtk.vBoxNew False 4
+  Gtk.set vboxOptionsAndSignals
+    [ Gtk.containerChild := options
+    , Gtk.boxChildPacking options := Gtk.PackNatural
+    , Gtk.containerChild := treeview
+    , Gtk.boxChildPacking treeview := Gtk.PackGrow
+    ]
+
   -- chart drawing area
   chartCanvas <- newChartCanvas graphInfoMVar
 
   -- hbox to hold eveything
-  hbox <- Gtk.hBoxNew False 4
-  Gtk.set hbox [ Gtk.containerChild := vbox
-               , Gtk.boxChildPacking vbox := Gtk.PackNatural
-               , Gtk.containerChild := chartCanvas
-               ]
-  _ <- Gtk.set win [ Gtk.containerChild := hbox ]
+  hboxEverything <- Gtk.hBoxNew False 4
+  Gtk.set hboxEverything
+    [ Gtk.containerChild := vboxOptionsAndSignals
+    , Gtk.boxChildPacking vboxOptionsAndSignals := Gtk.PackNatural
+    , Gtk.containerChild := chartCanvas
+    ]
+  _ <- Gtk.set win [ Gtk.containerChild := hboxEverything ]
 
   Gtk.widgetShowAll win
   return win
+
+
+
+newSignalSelectorArea :: forall a .
+  CC.MVar (GraphInfo a) -> Gtk.ListStore (SignalTree a) -> IO Gtk.ScrolledWindow
+newSignalSelectorArea graphInfoMVar signalTreeStore = do
+  treeStore <- Gtk.treeStoreNew []
+  treeview <- Gtk.treeViewNewWithModel treeStore
+
+  Gtk.treeViewSetHeadersVisible treeview True
+
+  -- add some columns
+  col1 <- Gtk.treeViewColumnNew
+  col2 <- Gtk.treeViewColumnNew
+
+  Gtk.treeViewColumnSetTitle col1 "signal"
+  Gtk.treeViewColumnSetTitle col2 "visible?"
+
+  renderer1 <- Gtk.cellRendererTextNew
+  renderer2 <- Gtk.cellRendererToggleNew
+
+  Gtk.cellLayoutPackStart col1 renderer1 True
+  Gtk.cellLayoutPackStart col2 renderer2 True
+
+  let showName (Just _) name _ = name
+      showName Nothing name "" = name
+      showName Nothing name typeName = name ++ " (" ++ typeName ++ ")"
+  Gtk.cellLayoutSetAttributes col1 renderer1 treeStore $
+    \(ListViewInfo {lviName = name, lviType = typeName, lviGetter = getter}) ->
+      [ Gtk.cellText := showName getter name typeName]
+  Gtk.cellLayoutSetAttributes col2 renderer2 treeStore $ \lvi -> [ Gtk.cellToggleActive := lviMarked lvi]
+
+  _ <- Gtk.treeViewAppendColumn treeview col1
+  _ <- Gtk.treeViewAppendColumn treeview col2
+
+
+  let -- update the graph information
+      updateGraphInfo = do
+        -- first get all trees
+        let getTrees k = do
+              tree' <- Gtk.treeStoreLookup treeStore [k]
+              case tree' of Nothing -> return []
+                            Just tree -> fmap (tree:) (getTrees (k+1))
+        theTrees <- getTrees 0
+        let newGetters :: [(String, Getter a)]
+            newGetters = [ (lviName lvi, fromJust $ lviGetter lvi)
+                         | lvi <- concatMap Tree.flatten theTrees
+                         , lviMarked lvi
+                         , isJust (lviGetter lvi)
+                         ]
+        _ <- CC.modifyMVar_ graphInfoMVar (\gi0 -> return $ gi0 { giGetters = newGetters })
+        return ()
+
+  -- update which y axes are visible
+  _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
+    let treePath = Gtk.stringToTreePath pathStr
+    -- toggle the check mark
+    let g lvi@(ListViewInfo _ _ Nothing _) = lvi
+        g lvi = lvi {lviMarked = not (lviMarked lvi)}
+    ret <- Gtk.treeStoreChange treeStore treePath g
+    unless ret $ putStrLn "treeStoreChange fail"
+    updateGraphInfo
+
+
+  -- rebuild the signal tree
+  let rebuildSignalTree :: SignalTree a -> IO ()
+      rebuildSignalTree signalTree = do
+        let mkTreeNode :: (String, String, Maybe (Getter a)) -> ListViewInfo a
+            mkTreeNode (name,typeName,maybeget) = ListViewInfo name typeName maybeget False
+            newTrees :: [Tree.Tree (ListViewInfo a)]
+            newTrees = map (fmap mkTreeNode) signalTree
+        Gtk.treeStoreClear treeStore
+        Gtk.treeStoreInsertForest treeStore [] 0 newTrees
+        updateGraphInfo
+
+  -- on insert or change, rebuild the signal tree
+  _ <- on signalTreeStore Gtk.rowChanged $ \_ changedPath -> do
+    newMeta <- Gtk.listStoreGetValue signalTreeStore (Gtk.listStoreIterToIndex changedPath)
+    rebuildSignalTree newMeta
+  _ <- on signalTreeStore Gtk.rowInserted $ \_ changedPath -> do
+    newMeta <- Gtk.listStoreGetValue signalTreeStore (Gtk.listStoreIterToIndex changedPath)
+    rebuildSignalTree newMeta
+
+  -- rebuild the signal tree right now if it exists
+  size <- Gtk.listStoreGetSize signalTreeStore
+  when (size > 0) $ do
+    newMeta <- Gtk.listStoreGetValue signalTreeStore 0
+    rebuildSignalTree newMeta
+
+
+  scroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.containerAdd scroll treeview
+  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
+                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+                 ]
+  return scroll
 
 
 makeOptionsWidget :: CC.MVar (GraphInfo a) -> IO Gtk.VBox
@@ -203,10 +291,34 @@ makeOptionsWidget graphInfoMVar = do
   _ <- on xScalingSelector Gtk.changed updateXScaling
   _ <- on yScalingSelector Gtk.changed updateYScaling
 
+  -- x axis type
+  xAxisTypeSelector <- Gtk.comboBoxNewText
+  mapM_ (Gtk.comboBoxAppendText xAxisTypeSelector)
+    ["counter","shifted counter","time","shifted time"]
+  Gtk.comboBoxSetActive xAxisTypeSelector 0
+  xAxisTypeSelectorBox <- labeledWidget "x axis:" xAxisTypeSelector
+  let updateXAxisTypeSelector = do
+        k <- Gtk.comboBoxGetActive xAxisTypeSelector
+        _ <- case k of
+          0 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxisType = XAxisCounter}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxisType = XAxisShiftedCounter}
+          2 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxisType = XAxisTime}
+          3 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxisType = XAxisShiftedTime}
+          _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 4"
+        return ()
+  updateXAxisTypeSelector
+  _ <- on xAxisTypeSelector Gtk.changed updateXAxisTypeSelector
+
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
-  
-  Gtk.set vbox [ Gtk.containerChild := xScalingBox
+
+  Gtk.set vbox [ Gtk.containerChild := xAxisTypeSelectorBox
+               , Gtk.boxChildPacking   xAxisTypeSelectorBox := Gtk.PackNatural
+               , Gtk.containerChild := xScalingBox
                , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
                , Gtk.containerChild := xRangeBox
                , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
@@ -215,60 +327,19 @@ makeOptionsWidget graphInfoMVar = do
                , Gtk.containerChild := yRangeBox
                , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
                ]
-    
+
   return vbox
 
 
-newTreeViewArea :: Tree.Tree (String, String, Maybe (a -> [[(PlotReal,PlotReal)]]))
-                   -> CC.MVar (GraphInfo a) -> IO Gtk.ScrolledWindow
-newTreeViewArea changetters graphInfoMVar = do
-  let mkTreeNode (name,fullName,maybeget) = ListViewInfo name fullName maybeget False
-  model <- Gtk.treeStoreNew [fmap mkTreeNode changetters]
-  treeview <- Gtk.treeViewNewWithModel model
 
-  Gtk.treeViewSetHeadersVisible treeview True
-
-  -- add some columns
-  col1 <- Gtk.treeViewColumnNew
-  col2 <- Gtk.treeViewColumnNew
-
-  Gtk.treeViewColumnSetTitle col1 "name"
-  Gtk.treeViewColumnSetTitle col2 "visible?"
-
-  renderer1 <- Gtk.cellRendererTextNew
-  renderer2 <- Gtk.cellRendererToggleNew
-
-  Gtk.cellLayoutPackStart col1 renderer1 True
-  Gtk.cellLayoutPackStart col2 renderer2 True
-
-  Gtk.cellLayoutSetAttributes col1 renderer1 model $ \lvi -> [ Gtk.cellText := lviName lvi]
-  Gtk.cellLayoutSetAttributes col2 renderer2 model $ \lvi -> [ Gtk.cellToggleActive := lviMarked lvi]
-
-  _ <- Gtk.treeViewAppendColumn treeview col1
-  _ <- Gtk.treeViewAppendColumn treeview col2
-
-  
-  let -- update the graph information
-      updateGraphInfo = do
-        lvis <- Gtk.treeStoreGetTree model [0]
-        let newGetters = [(lviFullName lvi, fromJust $ lviGetter lvi) | lvi <- Tree.flatten lvis, lviMarked lvi, isJust (lviGetter lvi)]
-            
-        _ <- CC.modifyMVar_ graphInfoMVar (\gi0 -> return $ gi0 { giGetters = newGetters })
-        return ()
-  
-  -- update which y axes are visible
-  _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
-    -- toggle the check mark
-    let treePath = Gtk.stringToTreePath pathStr
-        g lvi@(ListViewInfo _ _ Nothing _) = putStrLn "yeah, that's not gonna work" >> return lvi
-        g lvi = return $ lvi {lviMarked = not (lviMarked lvi)}
-    ret <- Gtk.treeStoreChangeM model treePath g
-    unless ret $ putStrLn "treeStoreChange fail"
-    updateGraphInfo
-
-  scroll <- Gtk.scrolledWindowNew Nothing Nothing
-  Gtk.containerAdd scroll treeview
-  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
-                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
-                 ]
-  return scroll
+-- helper to make an hbox with a label
+labeledWidget :: Gtk.WidgetClass a => String -> a -> IO Gtk.HBox
+labeledWidget name widget = do
+  label <- Gtk.labelNew (Just name)
+  hbox <- Gtk.hBoxNew False 4
+  Gtk.set hbox [ Gtk.containerChild := label
+               , Gtk.containerChild := widget
+               , Gtk.boxChildPacking label := Gtk.PackNatural
+--               , Gtk.boxChildPacking widget := Gtk.PackNatural
+               ]
+  return hbox

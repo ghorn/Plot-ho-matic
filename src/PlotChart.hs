@@ -1,34 +1,52 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module PlotChart ( AxisScaling(..), GraphInfo(..), newChartCanvas, updateCanvas ) where
+-- | One signals are selected and whatnot, this module just dumbly plots whatever
+-- is in the GraphInfo data
 
+module PlotChart
+       ( AxisScaling(..)
+       , GraphInfo(..)
+       , XAxisType(..)
+       , newChartCanvas
+       ) where
+
+import qualified Data.Sequence as S
+import qualified Data.Foldable as F
+import Data.Time ( NominalDiffTime )
 import qualified Control.Concurrent as CC
-import Control.Lens
+import Control.Lens ( (.~) )
 import Data.Default.Class ( def )
 --import qualified Data.Foldable as F
 --import qualified Data.Sequence as S
-import Data.Time ( NominalDiffTime )
 import qualified Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
 import qualified Graphics.Rendering.Chart.Gtk as ChartGtk
 
-import PlotTypes ( PlotReal )
-
-data AxisScaling = LogScaling
-                 | LinearScaling
-
--- what the graph should draw
-data GraphInfo a = GraphInfo { giData :: CC.MVar (a,Int,NominalDiffTime)
-                             , giXScaling :: AxisScaling
-                             , giYScaling :: AxisScaling
-                             , giXRange :: Maybe (Double,Double)
-                             , giYRange :: Maybe (Double,Double)
-                             , giGetters :: [(String, a -> [[(PlotReal,PlotReal)]])]
-                             }
+import PlotTypes ( Getter )
 
 -- milliseconds for draw time
 animationWaitTime :: Int
 animationWaitTime = 33
+
+data XAxisType = XAxisCounter -- message number
+               | XAxisShiftedCounter -- message number shifted to 0
+               | XAxisTime -- message receive time
+               | XAxisShiftedTime -- message receive time shifted to 0
+--               | XAxisFun (String, a -> Double)
+
+data AxisScaling = LogScaling
+                 | LinearScaling
+
+-- what the chart window needs to know to draw
+data GraphInfo a =
+  GraphInfo { giData :: CC.MVar (S.Seq (a, Int, NominalDiffTime))
+            , giXScaling :: AxisScaling
+            , giYScaling :: AxisScaling
+            , giXAxisType :: XAxisType
+            , giXRange :: Maybe (Double,Double)
+            , giYRange :: Maybe (Double,Double)
+            , giGetters :: [(String, Getter a)]
+            }
 
 newChartCanvas :: CC.MVar (GraphInfo a) -> IO Gtk.DrawingArea
 newChartCanvas graphInfoMVar = do
@@ -36,23 +54,34 @@ newChartCanvas graphInfoMVar = do
   chartCanvas <- Gtk.drawingAreaNew
   _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
   _ <- Gtk.onExpose chartCanvas $ const (updateCanvas graphInfoMVar chartCanvas)
-  _ <- Gtk.timeoutAddFull (do
-      Gtk.widgetQueueDraw chartCanvas
-      return True)
-    Gtk.priorityDefaultIdle animationWaitTime
+  _ <- Gtk.timeoutAddFull
+       (Gtk.widgetQueueDraw chartCanvas >> return True)
+       Gtk.priorityDefaultIdle animationWaitTime
   return chartCanvas
 
 updateCanvas :: CC.MVar (GraphInfo a) -> Gtk.DrawingArea -> IO Bool
 updateCanvas graphInfoMVar canvas = do
   gi <- CC.readMVar graphInfoMVar
-  (datalog,_,_) <- CC.readMVar (giData gi)
-  let f (name,getter) = (name, getter datalog :: [[(PlotReal,PlotReal)]])
+  datalogSeq <- CC.readMVar (giData gi)
+  let datalogList = F.toList datalogSeq
+      nameWithPoints :: [(String, [[(Double,Double)]])]
+      nameWithPoints = map f (giGetters gi)
 
-      -- convert to list of (name,S.Seq PbPrim)
-      namePcs :: [(String, [[(PlotReal,PlotReal)]])]
-      namePcs = map f (giGetters gi)
+      (k0,t0) = case datalogList of
+        [] -> (0,0)
+        ((_,k0',t0'):_) -> (k0',t0')
 
-  let myGraph = displayChart (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi) namePcs
+      xaxis :: [Double]
+      xaxis = case giXAxisType gi of
+        XAxisCounter        -> map (\(_,k,_) -> realToFrac  k    ) datalogList
+        XAxisShiftedCounter -> map (\(_,k,_) -> realToFrac (k-k0)) datalogList
+        XAxisTime           -> map (\(_,_,t) -> realToFrac t     ) datalogList
+        XAxisShiftedTime    -> map (\(_,_,t) -> realToFrac (t-t0)) datalogList
+        
+      f (name, Right getter) = (name, getter datalogSeq :: [[(Double,Double)]])
+      f (name, Left getter) = (name, [zip xaxis (map (\(d,_,_) -> getter d) datalogList)])
+
+  let myGraph = displayChart (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi) nameWithPoints
   ChartGtk.updateCanvas myGraph canvas
 
 displayChart :: (Chart.PlotValue a, Show a, RealFloat a) =>

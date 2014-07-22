@@ -2,42 +2,34 @@
 --{-# Language ExistentialQuantification #-}
 --{-# Language GADTs #-}
 
-module PlotTypes ( Channel(..)
-                 , PlotReal
---                 , PbPrim(..)
---                 , PbTree(..)
---                 , PbTree'(..)
---                 , XAxisType(..)
---                 , toGetterTree
---                 , pbTreeToTree
-                 ) where
+module PlotTypes
+       ( Channel(..)
+       , ListViewInfo(..)
+       , SignalTree
+       , Getter
+       ) where
 
 import Control.Concurrent ( MVar, ThreadId )
---import Data.Sequence ( Seq )
 import Data.Time ( NominalDiffTime )
-import Data.Tree ( Tree(..) )
+import qualified Data.Sequence as S
+import qualified Graphics.UI.Gtk as Gtk
+import qualified Data.Tree as Tree
 
---import GAccessors
+type Getter a = Either (a -> Double) (S.Seq (a, Int, NominalDiffTime) -> [[(Double,Double)]])
 
-type PlotReal = Double
+-- | a tree of name/getter pairs
+type SignalTree a = Tree.Forest (String, String, Maybe (Getter a))
 
---toGetterTree :: AccessorTree a -> Tree (String, String, Maybe (a -> [(PlotReal,PlotReal)]))
---toGetterTree = toGetterTree' "" ""
---
---toGetterTree' :: String -> String -> AccessorTree a ->
---                 Tree (String, String, Maybe (a -> [(PlotReal,PlotReal)]))
---toGetterTree' msg name (Getter f) = Node (name, msg,Just f) []
---toGetterTree' msg name (Data (_,name') children) =
---  Node (msg, name, Nothing) $ map (\(n,t) -> toGetterTree' (msg ++ name) n t) children
-
---data XAxisType a = XAxisTime
---                 | XAxisCounter
---                 | XAxisStaticCounter
---                 | XAxisFun (String, a -> PlotReal)
+data ListViewInfo a = ListViewInfo { lviName :: String
+                                   , lviType :: String
+                                   , lviGetter :: Maybe (Getter a)
+                                   , lviMarked :: Bool
+                                   }
 
 data Channel a =
   Channel { chanName :: String
-          , chanTraj :: MVar (a, Int, NominalDiffTime)
+          , chanTraj :: MVar (S.Seq (a, Int, NominalDiffTime))
+          , chanMaxHist :: MVar Int
+          , chanSignalTreeStore :: Gtk.ListStore (SignalTree a)
           , chanServerThreadId :: ThreadId
-          , chanGetters :: Tree (String, String, Maybe (a -> [[(PlotReal,PlotReal)]]))
           }

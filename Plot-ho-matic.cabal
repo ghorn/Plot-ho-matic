@@ -58,6 +58,5 @@ executable example
   build-depends:       base >= 4.6 && < 5
                        , Plot-ho-matic
                        , containers
-                       , cereal
 
   ghc-options:         -threaded -O2

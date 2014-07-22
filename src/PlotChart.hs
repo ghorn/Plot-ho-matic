@@ -71,23 +71,27 @@ updateCanvas graphInfoMVar canvas = do
         [] -> (0,0)
         ((_,k0',t0'):_) -> (k0',t0')
 
+      xAxisType = giXAxisType gi
+
       xaxis :: [Double]
-      xaxis = case giXAxisType gi of
+      xaxis = case xAxisType of
         XAxisCounter        -> map (\(_,k,_) -> realToFrac  k    ) datalogList
         XAxisShiftedCounter -> map (\(_,k,_) -> realToFrac (k-k0)) datalogList
         XAxisTime           -> map (\(_,_,t) -> realToFrac t     ) datalogList
         XAxisShiftedTime    -> map (\(_,_,t) -> realToFrac (t-t0)) datalogList
-        
+
       f (name, Right getter) = (name, getter datalogSeq :: [[(Double,Double)]])
       f (name, Left getter) = (name, [zip xaxis (map (\(d,_,_) -> getter d) datalogList)])
 
-  let myGraph = displayChart (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi) nameWithPoints
+  let myGraph = displayChart xAxisType
+                (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi) nameWithPoints
   ChartGtk.updateCanvas myGraph canvas
 
 displayChart :: (Chart.PlotValue a, Show a, RealFloat a) =>
+                XAxisType ->
                 (AxisScaling, AxisScaling) -> (Maybe (a,a),Maybe (a,a)) ->
                 [(String, [[(a,a)]])] -> Chart.Renderable ()
-displayChart (xScaling,yScaling) (xRange,yRange) namePcs = Chart.toRenderable layout
+displayChart xAxisType (xScaling,yScaling) (xRange,yRange) namePcs = Chart.toRenderable layout
   where
     drawOne (name,pc) col
       = Chart.plot_lines_values .~ pc
@@ -109,9 +113,15 @@ displayChart (xScaling,yScaling) (xRange,yRange) namePcs = Chart.toRenderable la
         Nothing -> id
         Just range -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
 
+    xlabel = case xAxisType of
+      XAxisTime -> "time [s]"
+      XAxisShiftedTime -> "time [s]"
+      XAxisCounter -> "count"
+      XAxisShiftedCounter -> "count"
+
     layout = Chart.layout_plots .~ map Chart.toPlot allLines
 --             $ Chart.layout_title .~ "Wooo, Party Graph!"
-             $ Chart.layout_x_axis . Chart.laxis_title .~ "time [s]"
+             $ Chart.layout_x_axis . Chart.laxis_title .~ xlabel
              $ xscaleFun
              $ yscaleFun
              def

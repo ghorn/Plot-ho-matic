@@ -3,16 +3,13 @@
 --{-# Language GADTs #-}
 
 module PlotTypes
-       ( Channel(..)
-       , ListViewInfo(..)
+       ( ListViewInfo(..)
        , SignalTree
        , Getter
        ) where
 
-import Control.Concurrent ( MVar, ThreadId )
 import Data.Time ( NominalDiffTime )
 import qualified Data.Sequence as S
-import qualified Graphics.UI.Gtk as Gtk
 import qualified Data.Tree as Tree
 
 type Getter a = Either (a -> Double) (S.Seq (a, Int, NominalDiffTime) -> [[(Double,Double)]])
@@ -25,11 +22,3 @@ data ListViewInfo a = ListViewInfo { lviName :: String
                                    , lviGetter :: Maybe (Getter a)
                                    , lviMarked :: Bool
                                    }
-
-data Channel a =
-  Channel { chanName :: String
-          , chanTraj :: MVar (S.Seq (a, Int, NominalDiffTime))
-          , chanMaxHist :: MVar Int
-          , chanSignalTreeStore :: Gtk.ListStore (SignalTree a)
-          , chanServerThreadId :: ThreadId
-          }

@@ -52,6 +52,8 @@ flatten' msgs (Data (_,_) trees) = concatMap f trees
   where
     f (name,tree) = flatten' (name:msgs) tree
 
+-- | Things which you can make a tree of labeled getters for.
+-- You should derive this using GHC.Generics.
 class Lookup a where
   toAccessorTree :: a -> (b -> a) -> AccessorTree b
 

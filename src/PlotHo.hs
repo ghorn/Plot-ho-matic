@@ -3,8 +3,9 @@
 {-# Language DeriveFunctor #-}
 
 module PlotHo
-       ( Lookup
+       ( Lookup(..)
        , SignalTree
+       , AccessorTree(..)
        , addChannel
        , makeSignalTree
        , runPlotter

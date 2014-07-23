@@ -119,7 +119,7 @@ instance (Lookup a, Generic a) => Lookup (Linear.Quaternion a) where
       getQ3 (Linear.Quaternion _ (Linear.V3 _ _ z)) = z
 
 
-instance (Lookup f, Generic f) => GLookup (Rec0 f) where
+instance Lookup f => GLookup (Rec0 f) where
   gtoAccessorTree x f = toAccessorTree (unK1 x) (unK1 . f)
 
 instance (Selector s, GLookup a) => GLookupS (S1 s a) where

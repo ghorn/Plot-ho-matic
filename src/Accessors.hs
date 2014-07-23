@@ -16,6 +16,9 @@ module Accessors
 
 import Data.List ( intercalate )
 import qualified Linear
+import GHC.Word
+import Data.Int
+import Foreign.C.Types
 import GHC.Generics
 
 showAccTree :: String -> AccessorTree a -> [String]
@@ -116,15 +119,6 @@ instance (Lookup a, Generic a) => Lookup (Linear.Quaternion a) where
       getQ3 (Linear.Quaternion _ (Linear.V3 _ _ z)) = z
 
 
-instance Lookup Float where
-  toAccessorTree _ f = ATGetter $ realToFrac . f
-instance Lookup Double where
-  toAccessorTree _ f = ATGetter $ realToFrac . f
-instance Lookup Int where
-  toAccessorTree _ f = ATGetter $ fromIntegral . f
-instance Lookup () where -- hack to get dummy tree
-  toAccessorTree _ _ = ATGetter $ const 0
-
 instance (Lookup f, Generic f) => GLookup (Rec0 f) where
   gtoAccessorTree x f = toAccessorTree (unK1 x) (unK1 . f)
 
@@ -151,6 +145,93 @@ instance (Datatype d, Constructor c, GLookupS a) => GLookup (D1 d (C1 c a)) wher
   gtoAccessorTree d@(M1 c) f = Data (datatypeName d, conName c) con
     where
       con = gtoAccessorTreeS (unM1 c) (unM1 . unM1 . f)
+
+-- basic types
+instance Lookup () where -- hack to get dummy tree
+  toAccessorTree _ _ = ATGetter $ const 0
+instance Lookup Int where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Float where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Double where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Bool where
+  toAccessorTree _ f = ATGetter $ realToFrac . fromEnum . f
+
+-- Word types
+instance Lookup Word where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Word8 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Word16 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Word32 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Word64 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+
+-- Int types
+instance Lookup Int8 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Int16 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Int32 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup Int64 where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+
+-- C types
+instance Lookup CChar where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CSChar where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CUChar where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CShort where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CUShort where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CInt where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CUInt where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CLong where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CULong where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CPtrdiff where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CSize where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CWchar where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CSigAtomic where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CLLong where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CULLong where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CIntPtr where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CUIntPtr where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CIntMax where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CUIntMax where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CClock where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CTime where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CUSeconds where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CSUSeconds where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CFloat where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+instance Lookup CDouble where
+  toAccessorTree _ f = ATGetter $ realToFrac . f
+
 
 --data Xyz = Xyz { xx :: Int
 --               , yy :: Double

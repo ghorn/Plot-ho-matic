@@ -7,7 +7,7 @@ import qualified Control.Concurrent as CC
 import GHC.Generics ( Generic )
 --import qualified System.Remote.Monitoring as EKG
 
-import Plotter ( Lookup, SignalTree, runPlotter, addChannel, makeSignalTree )
+import PlotHo ( Lookup, SignalTree, runPlotter, addChannel, makeSignalTree )
 
 data Xyz = MkXyz { x :: Double
                  , y :: Double

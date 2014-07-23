@@ -2,7 +2,7 @@
 {-# Language ScopedTypeVariables #-}
 {-# Language DeriveFunctor #-}
 
-module Plotter
+module PlotHo
        ( Lookup
        , SignalTree
        , addChannel

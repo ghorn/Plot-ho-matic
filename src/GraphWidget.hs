@@ -301,13 +301,13 @@ makeOptionsWidget graphInfoMVar = do
         k <- Gtk.comboBoxGetActive xAxisTypeSelector
         _ <- case k of
           0 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxisType = XAxisCounter}
-          1 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxisType = XAxisShiftedCounter}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxisType = XAxisCounter}
           2 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxisType = XAxisTime}
-          3 -> CC.modifyMVar_ graphInfoMVar $
                \gi -> return $ gi {giXAxisType = XAxisShiftedTime}
+          3 -> CC.modifyMVar_ graphInfoMVar $
+               \gi -> return $ gi {giXAxisType = XAxisTime}
           _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 4"
         return ()
   updateXAxisTypeSelector

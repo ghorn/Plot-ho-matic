@@ -1,5 +1,5 @@
 name:                Plot-ho-matic
-version:             0.4.0.1
+version:             0.4.0.2
 synopsis:            Real-time line plotter for protobuf-like data
 license:             BSD3
 license-file:        LICENSE

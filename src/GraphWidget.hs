@@ -294,7 +294,7 @@ makeOptionsWidget graphInfoMVar = do
   -- x axis type
   xAxisTypeSelector <- Gtk.comboBoxNewText
   mapM_ (Gtk.comboBoxAppendText xAxisTypeSelector)
-    ["counter","shifted counter","time","shifted time"]
+    ["shifted counter","counter","shifted time","time"]
   Gtk.comboBoxSetActive xAxisTypeSelector 0
   xAxisTypeSelectorBox <- labeledWidget "x axis:" xAxisTypeSelector
   let updateXAxisTypeSelector = do

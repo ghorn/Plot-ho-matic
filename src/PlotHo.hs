@@ -179,7 +179,7 @@ runPlotter plotterMonad = do
   chanWidgets <- mapM (\x -> x graphWindowsToBeKilled) windows
 
   -- ghc stats
-  statsLabel <- Gtk.labelNew Nothing
+  statsLabel <- Gtk.labelNew (Nothing :: Maybe String)
   let statsWorker = do
         CC.threadDelay 500000
         msg <- if statsEnabled

@@ -17,6 +17,7 @@ import "gtk" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk" Graphics.UI.Gtk as Gtk
 import Data.Time ( NominalDiffTime )
 import System.Glib.Signals ( on )
+import qualified Data.Text as T
 
 import PlotChart ( GraphInfo(..), AxisScaling(..), XAxisType(..), newChartCanvas )
 import PlotTypes ( SignalTree, ListViewInfo(..), Getter )
@@ -237,9 +238,9 @@ makeOptionsWidget graphInfoMVar = do
   -- linear or log scaling on the x and y axis?
   xScalingSelector <- Gtk.comboBoxNewText
   yScalingSelector <- Gtk.comboBoxNewText
-  mapM_ (Gtk.comboBoxAppendText xScalingSelector)
+  mapM_ (Gtk.comboBoxAppendText xScalingSelector . T.pack)
     ["linear (auto)","linear (manual)","logarithmic (auto)"]
-  mapM_ (Gtk.comboBoxAppendText yScalingSelector)
+  mapM_ (Gtk.comboBoxAppendText yScalingSelector . T.pack)
     ["linear (auto)","linear (manual)","logarithmic (auto)"]
   Gtk.comboBoxSetActive xScalingSelector 0
   Gtk.comboBoxSetActive yScalingSelector 0
@@ -294,7 +295,7 @@ makeOptionsWidget graphInfoMVar = do
 
   -- x axis type
   xAxisTypeSelector <- Gtk.comboBoxNewText
-  mapM_ (Gtk.comboBoxAppendText xAxisTypeSelector)
+  mapM_ (Gtk.comboBoxAppendText xAxisTypeSelector . T.pack)
     ["shifted counter","counter","shifted time","time"]
   Gtk.comboBoxSetActive xAxisTypeSelector 0
   xAxisTypeSelectorBox <- labeledWidget "x axis:" xAxisTypeSelector

@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# Language PackageImports #-}
 
 -- | One signals are selected and whatnot, this module just dumbly plots whatever
 -- is in the GraphInfo data
@@ -18,7 +19,7 @@ import Control.Lens ( (.~) )
 import Data.Default.Class ( def )
 --import qualified Data.Foldable as F
 --import qualified Data.Sequence as S
-import qualified Graphics.UI.Gtk as Gtk
+import qualified "gtk" Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
 import qualified Graphics.Rendering.Chart.Gtk as ChartGtk
 

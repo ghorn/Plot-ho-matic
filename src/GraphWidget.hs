@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ScopedTypeVariables #-}
+{-# Language PackageImports #-}
 
 -- | This module manages the widget which lets the user click signals and stuff
 
@@ -12,8 +13,8 @@ import qualified Control.Concurrent as CC
 import Control.Monad ( when, unless )
 import qualified Data.Sequence as S
 import qualified Data.Tree as Tree
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import "gtk" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk" Graphics.UI.Gtk as Gtk
 import Data.Time ( NominalDiffTime )
 import System.Glib.Signals ( on )
 

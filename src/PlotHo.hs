@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ScopedTypeVariables #-}
 {-# Language DeriveFunctor #-}
+{-# Language PackageImports #-}
 
 module PlotHo
        ( Lookup(..)
@@ -17,8 +18,8 @@ import qualified Data.Sequence as S
 import qualified Control.Concurrent as CC
 import qualified Control.Concurrent.STM as STM
 import Data.Time ( getCurrentTime, diffUTCTime )
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import "gtk" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 --import System.IO ( withFile, IOMode ( WriteMode ) )
 --import qualified Data.ByteString.Lazy as BSL

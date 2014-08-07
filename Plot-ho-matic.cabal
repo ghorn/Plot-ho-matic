@@ -60,3 +60,4 @@ executable example
                        , containers
 
   ghc-options:         -threaded -O2
+  ghc-prof-options:    -threaded -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts

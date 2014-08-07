@@ -36,7 +36,7 @@ library
                      , gtk < 0.13
                      , time
                      , Chart >= 1.1
-                     , Chart-gtk >= 1.1
+                     , Chart-cairo >= 1.1
                      , linear
 
   ghc-options:      -O2 -Wall

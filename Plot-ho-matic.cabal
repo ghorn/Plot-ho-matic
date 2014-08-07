@@ -33,7 +33,7 @@ library
                      , data-default-class
                      , stm
                      , glib
-                     , gtk
+                     , gtk < 0.13
                      , time
                      , Chart >= 1.1
                      , Chart-gtk >= 1.1

@@ -67,16 +67,16 @@ class GLookupS f where
   gtoAccessorTreeS :: f a -> (b -> f a) -> [(String, AccessorTree b)]
 
 -- some instance from linear
-instance (Lookup a, Generic a) => Lookup (Linear.V0 a) where
+instance Lookup a => Lookup (Linear.V0 a) where
   toAccessorTree _ _ =
     Data ("V0", "V0") []
-instance (Lookup a, Generic a) => Lookup (Linear.V1 a) where
+instance Lookup a => Lookup (Linear.V1 a) where
   toAccessorTree xyz f =
     Data ("V1", "V1") [ ("x", toAccessorTree (getX xyz) (getX . f))
                       ]
     where
       getX (Linear.V1 x) = x
-instance (Lookup a, Generic a) => Lookup (Linear.V2 a) where
+instance Lookup a => Lookup (Linear.V2 a) where
   toAccessorTree xyz f =
     Data ("V2", "V2") [ ("x", toAccessorTree (getX xyz) (getX . f))
                       , ("y", toAccessorTree (getY xyz) (getY . f))
@@ -84,7 +84,7 @@ instance (Lookup a, Generic a) => Lookup (Linear.V2 a) where
     where
       getX (Linear.V2 x _) = x
       getY (Linear.V2 _ y) = y
-instance (Lookup a, Generic a) => Lookup (Linear.V3 a) where
+instance Lookup a => Lookup (Linear.V3 a) where
   toAccessorTree xyz f =
     Data ("V3", "V3") [ ("x", toAccessorTree (getX xyz) (getX . f))
                       , ("y", toAccessorTree (getY xyz) (getY . f))
@@ -94,7 +94,7 @@ instance (Lookup a, Generic a) => Lookup (Linear.V3 a) where
       getX (Linear.V3 x _ _) = x
       getY (Linear.V3 _ y _) = y
       getZ (Linear.V3 _ _ z) = z
-instance (Lookup a, Generic a) => Lookup (Linear.V4 a) where
+instance Lookup a => Lookup (Linear.V4 a) where
   toAccessorTree xyz f =
     Data ("V4", "V4") [ ("x", toAccessorTree (getX xyz) (getX . f))
                       , ("y", toAccessorTree (getY xyz) (getY . f))
@@ -106,7 +106,7 @@ instance (Lookup a, Generic a) => Lookup (Linear.V4 a) where
       getY (Linear.V4 _ y _ _) = y
       getZ (Linear.V4 _ _ z _) = z
       getW (Linear.V4 _ _ _ w) = w
-instance (Lookup a, Generic a) => Lookup (Linear.Quaternion a) where
+instance Lookup a => Lookup (Linear.Quaternion a) where
   toAccessorTree xyz f =
     Data ("Quaternion", "Quaternion")
     [ ("q0", toAccessorTree (getQ0 xyz) (getQ0 . f))

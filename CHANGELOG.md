@@ -15,3 +15,7 @@
 * Performance improvements
 * Safer monadic API
 * More general plottable types
+
+0.4.0.4
+---
+remove Generic requirement for some Lookup instances

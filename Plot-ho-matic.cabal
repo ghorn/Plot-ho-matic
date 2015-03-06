@@ -63,18 +63,3 @@ executable example
 
   ghc-options:         -O2
   ghc-prof-options:    -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts
-
-
-test-suite unit-tests
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      tests
-  main-is:             Tests.hs
-  default-language:    Haskell2010
-  build-depends:       Plot-ho-matic,
-                       QuickCheck >= 2,
-                       HUnit,
-                       test-framework,
-                       test-framework-hunit,
---                       test-framework-quickcheck2,
-                       base >=4.6 && < 5
-  ghc-options:         -O2

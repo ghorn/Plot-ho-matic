@@ -15,12 +15,16 @@ module Accessors
        , showFlat
        ) where
 
+import GHC.Generics
+
 import Data.List ( intercalate )
 import qualified Linear
 import GHC.Word
 import Data.Int
 import Foreign.C.Types
-import GHC.Generics
+
+import SpatialMath ( Euler )
+import SpatialMathT ( V3T, Rot )
 
 showAccTree :: String -> AccessorTree a -> [String]
 showAccTree spaces (ATGetter _) = [spaces ++ "ATGetter {}"]
@@ -235,6 +239,10 @@ instance Lookup CFloat where
 instance Lookup CDouble where
   toAccessorTree _ f = ATGetter $ realToFrac . f
 
+-- other types
+instance Lookup a => Lookup (Rot f1 f2 a)
+instance Lookup a => Lookup (V3T f a)
+instance Lookup a => Lookup (Euler a)
 
 showAccTrees :: (Double -> String) -> a -> [(String, AccessorTree a)] -> String -> [String]
 showAccTrees show' x trees spaces = concat cs ++ [spaces ++ "}"]

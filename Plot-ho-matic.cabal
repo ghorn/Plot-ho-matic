@@ -39,6 +39,7 @@ library
                      , Chart-cairo >= 1.1
                      , linear
                      , text
+                     , spatial-math >= 0.2.0
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts

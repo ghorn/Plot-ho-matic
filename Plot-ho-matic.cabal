@@ -25,9 +25,8 @@ library
                      PlotHo.Accessors
   other-modules:     PlotHo.GraphWidget,
                      PlotHo.PlotChart,
-                     PlotHo.PlotTypes,
-                     PlotHo.ReadMaybe
-  build-depends:     base >= 4.5.0 && < 5
+                     PlotHo.PlotTypes
+  build-depends:     base >= 4.6.0.0 && < 5
                      , containers
                      , lens
                      , data-default-class

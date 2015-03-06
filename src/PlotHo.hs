@@ -25,6 +25,7 @@ import System.Glib.Signals ( on )
 --import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Tree as Tree
 import Text.Printf ( printf )
+import Text.Read ( readMaybe )
 
 import Control.Applicative ( Applicative(..), liftA2 )
 
@@ -33,7 +34,6 @@ import qualified GHC.Stats
 import PlotHo.PlotTypes --( Channel(..), SignalTree )
 import PlotHo.Accessors
 import PlotHo.GraphWidget ( newGraph )
-import PlotHo.ReadMaybe ( readMaybe )
 
 newtype Plotter a = Plotter { unPlotter :: IO (a, [ChannelStuff]) } deriving Functor
 

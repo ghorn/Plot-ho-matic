@@ -18,10 +18,10 @@ import qualified "gtk" Graphics.UI.Gtk as Gtk
 import Data.Time ( NominalDiffTime )
 import System.Glib.Signals ( on )
 import qualified Data.Text as T
+import Text.Read ( readMaybe )
 
 import PlotHo.PlotChart ( GraphInfo(..), AxisScaling(..), XAxisType(..), newChartCanvas )
 import PlotHo.PlotTypes ( SignalTree, ListViewInfo(..), Getter )
-import PlotHo.ReadMaybe ( readMaybe )
 
 -- make a new graph window
 newGraph ::

@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 --{-# OPTIONS_GHC -ddump-deriv #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -12,6 +13,8 @@ module Accessors
        , AccessorTree(..)
        , accessors
        , flatten
+       , showTree
+       , showFlat
        ) where
 
 import Data.List ( intercalate )
@@ -253,3 +256,38 @@ instance Lookup CDouble where
 --foo = MkFoo 2 (Xyz 6 7 8 9) (MkOne 17)
 --
 --go = accessors foo
+showAccTrees :: (Double -> String) -> a -> [(String, AccessorTree a)] -> String -> [String]
+showAccTrees show' x trees spaces = concat cs ++ [spaces ++ "}"]
+  where
+    cs = zipWith (showRecordField show' x spaces) trees ("{ " : repeat ", ")
+
+showRecordField :: (Double -> String) -> a -> String -> (String, AccessorTree a) -> String -> [String]
+showRecordField show' x spaces (getterName, ATGetter f) prefix =
+  [spaces ++ prefix ++ getterName ++ " = " ++ show' (f x)]
+showRecordField show' x spaces (getterName, Data (_,cons) trees) prefix =
+  (spaces ++ prefixNameEq ++ cons) : showAccTrees show' x trees newSpaces
+  where
+    prefixNameEq = prefix ++ getterName ++ " = "
+    newSpaces = spaces ++ (replicate (length prefixNameEq) ' ')
+
+-- | Show a tree of values
+showTree :: AccessorTree a -> (Double -> String) -> a -> String
+showTree (Data (_,cons) trees) show' x = init $ unlines $ cons : showAccTrees show' x trees ""
+showTree (ATGetter f) show' x = show' (f x)
+
+-- | Show a list of values
+-- .
+-- True --> align the colums, False --> total mayhem
+showFlat :: forall a . AccessorTree a -> Bool -> (Double -> String) -> a -> String
+showFlat at align show' x = init $ unlines $ map f fl
+  where
+    n = maximum (map (length . fst) fl)
+
+    f (name, get) = name ++ spaces ++ " = " ++ show' (get x)
+      where
+        spaces
+          | align = replicate (n - length name) ' '
+          | otherwise = ""
+
+    fl :: [(String, a -> Double)]
+    fl = flatten at

@@ -19,3 +19,10 @@
 0.4.0.4
 ---
 remove Generic requirement for some Lookup instances
+
+0.5.0.0
+---
+* Use Accessors from generic-accessors package
+* Major performance improvements (only draw new data)
+* Both "history" and custom plot interfaces
+* Unify this package with the dynobud plotter

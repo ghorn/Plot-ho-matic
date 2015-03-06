@@ -7,8 +7,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Accessors
-       ( Generic
-       , Lookup(..)
+       ( Lookup(..)
        , AccessorTree(..)
        , accessors
        , flatten

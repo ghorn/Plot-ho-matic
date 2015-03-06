@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 
-module ReadMaybe
+module PlotHo.ReadMaybe
        ( readMaybe
        ) where
 

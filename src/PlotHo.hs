@@ -30,10 +30,10 @@ import Control.Applicative ( Applicative(..), liftA2 )
 
 import qualified GHC.Stats
 
-import PlotTypes --( Channel(..), SignalTree )
-import Accessors
-import GraphWidget ( newGraph )
-import ReadMaybe ( readMaybe )
+import PlotHo.PlotTypes --( Channel(..), SignalTree )
+import PlotHo.Accessors
+import PlotHo.GraphWidget ( newGraph )
+import PlotHo.ReadMaybe ( readMaybe )
 
 newtype Plotter a = Plotter { unPlotter :: IO (a, [ChannelStuff]) } deriving Functor
 

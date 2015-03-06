@@ -6,7 +6,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module Accessors
+module PlotHo.Accessors
        ( Lookup(..)
        , AccessorTree(..)
        , accessors

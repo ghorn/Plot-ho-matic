@@ -4,7 +4,7 @@
 -- | One signals are selected and whatnot, this module just dumbly plots whatever
 -- is in the GraphInfo data
 
-module PlotChart
+module PlotHo.PlotChart
        ( AxisScaling(..)
        , GraphInfo(..)
        , XAxisType(..)
@@ -23,7 +23,7 @@ import qualified "gtk" Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
 import Graphics.Rendering.Chart.Backend.Cairo ( runBackend, defaultEnv )
 
-import PlotTypes ( Getter )
+import PlotHo.PlotTypes ( Getter )
 
 -- milliseconds for draw time
 animationWaitTime :: Int

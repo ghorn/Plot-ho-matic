@@ -12,7 +12,7 @@ import qualified Test.HUnit.Base as HUnit
 import Test.Framework ( Test, testGroup )
 import Test.Framework.Providers.HUnit ( testCase )
 
-import Accessors
+import PlotHo.Accessors
 
 main :: IO ()
 main = do

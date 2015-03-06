@@ -2,7 +2,7 @@
 --{-# Language ExistentialQuantification #-}
 --{-# Language GADTs #-}
 
-module PlotTypes
+module PlotHo.PlotTypes
        ( ListViewInfo(..)
        , SignalTree
        , Getter

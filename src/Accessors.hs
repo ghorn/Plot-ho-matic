@@ -5,7 +5,6 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
---{-# LANGUAGE DeriveGeneric #-} -- for example at bottom
 
 module Accessors
        ( Generic
@@ -238,24 +237,6 @@ instance Lookup CDouble where
   toAccessorTree _ f = ATGetter $ realToFrac . f
 
 
---data Xyz = Xyz { xx :: Int
---               , yy :: Double
---               , zz :: Float
---               , ww :: Int
---               } deriving (Generic)
---data One = MkOne { one :: Double } deriving (Generic)
---data Foo = MkFoo { aaa :: Int
---                 , bbb :: Xyz
---                 , ccc :: One
---                 } deriving (Generic)
---instance Lookup One
---instance Lookup Xyz
---instance Lookup Foo
---
---foo :: Foo
---foo = MkFoo 2 (Xyz 6 7 8 9) (MkOne 17)
---
---go = accessors foo
 showAccTrees :: (Double -> String) -> a -> [(String, AccessorTree a)] -> String -> [String]
 showAccTrees show' x trees spaces = concat cs ++ [spaces ++ "}"]
   where

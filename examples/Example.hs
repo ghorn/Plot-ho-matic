@@ -7,7 +7,7 @@ import qualified Control.Concurrent as CC
 import GHC.Generics ( Generic )
 --import qualified System.Remote.Monitoring as EKG
 
-import PlotHo ( Lookup, SignalTree, runPlotter, addChannel, makeSignalTree )
+import PlotHo ( Lookup, XAxisType(..), runPlotter, addHistoryChannel )
 
 data Xyz = MkXyz { x :: Double
                  , y :: Double
@@ -41,22 +41,19 @@ incrementXyz :: Xyz -> Xyz
 incrementXyz (MkXyz a _ _) = MkXyz (a+0.3) (2 * sin a) (3 * cos a)
 
 -- a random function to write a bunch of data to a chan
-channelWriter :: Int -> (a -> a) -> a -> (a -> IO ()) -> IO ()
-channelWriter delay increment x' chan = do
+channelWriter :: Int -> Int -> (a -> a) -> a -> (a -> Bool -> IO ()) -> IO ()
+channelWriter count delay increment x' chan = do
+  --putStrLn $ "writing: " ++ show count
   CC.threadDelay delay
-  chan (increment x')
-  channelWriter delay increment (increment x') chan
-
-ast :: SignalTree Axyz
-ast = makeSignalTree axyz0
-
-st :: SignalTree Xyz
-st = makeSignalTree xyz0
+  chan (increment x') False
+  channelWriter (count + 1) delay increment (increment x') chan
 
 main :: IO ()
 main = do
 --  ekgTid <- fmap EKG.serverThreadId $ EKG.forkServer "localhost" 8000
 
   runPlotter $ do
-    addChannel "posPlus" ast (\w _ -> channelWriter 50000 incrementAxyz axyz0 w)
-    addChannel "pos" st (\w _ -> channelWriter 60000 incrementXyz xyz0 w)
+    addHistoryChannel "posPlos"  XAxisTime   $ channelWriter 0 50000 incrementAxyz axyz0
+    addHistoryChannel "pos"      XAxisCount  $ channelWriter 0 60000 incrementXyz xyz0
+    addHistoryChannel "posPlos"  XAxisTime0  $ channelWriter 0 50000 incrementAxyz axyz0
+    addHistoryChannel "pos"      XAxisCount0 $ channelWriter 0 60000 incrementXyz xyz0

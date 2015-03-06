@@ -3,22 +3,43 @@
 --{-# Language GADTs #-}
 
 module PlotHo.PlotTypes
-       ( ListViewInfo(..)
-       , SignalTree
-       , Getter
+       ( Channel(..)
+       , GraphInfo(..)
+       , ListViewInfo(..)
+       , AxisScaling(..)
        ) where
 
-import Data.Time ( NominalDiffTime )
-import qualified Data.Sequence as S
-import qualified Data.Tree as Tree
+import Data.Tree ( Tree )
+import qualified Graphics.UI.Gtk as Gtk
+import Data.IORef ( IORef )
 
-type Getter a = Either (a -> Double) (S.Seq (a, Int, NominalDiffTime) -> [[(Double,Double)]])
+data ListViewInfo a =
+  ListViewInfo
+  { lviName :: String
+  , lviType :: String
+  , lviGetter :: Maybe (a -> [[(Double,Double)]])
+  , lviMarked :: Bool
+  }
 
--- | a tree of name/getter pairs
-type SignalTree a = Tree.Forest (String, String, Maybe (Getter a))
+data AxisScaling = LogScaling
+                 | LinearScaling
 
-data ListViewInfo a = ListViewInfo { lviName :: String
-                                   , lviType :: String
-                                   , lviGetter :: Maybe (Getter a)
-                                   , lviMarked :: Bool
-                                   }
+-- what the graph should draw
+data GraphInfo a =
+  GraphInfo { giXScaling :: AxisScaling
+            , giYScaling :: AxisScaling
+            , giXRange :: Maybe (Double,Double)
+            , giYRange :: Maybe (Double,Double)
+            , giGetters :: [(String, a -> [[(Double,Double)]])]
+            }
+
+data Channel a =
+  Channel { chanName :: String
+          , chanMsgStore :: Gtk.ListStore a
+          , chanSameSignalTree :: a -> a -> Bool
+          , chanToSignalTree :: a -> [Tree ( String
+                                           , String
+                                           , Maybe (a -> [[(Double, Double)]])
+                                           )]
+          , chanMaxHistory :: IORef Int
+          }

@@ -1,60 +1,83 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ScopedTypeVariables #-}
-{-# Language PackageImports #-}
-
--- | This module manages the widget which lets the user click signals and stuff
 
 module PlotHo.GraphWidget
        ( newGraph
        ) where
 
-import Data.Maybe (fromJust, isJust)
 import qualified Control.Concurrent as CC
 import Control.Monad ( when, unless )
-import qualified Data.Sequence as S
+import qualified Data.IORef as IORef
+import Data.Maybe ( isJust, fromJust )
 import qualified Data.Tree as Tree
-import "gtk" Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified "gtk" Graphics.UI.Gtk as Gtk
-import Data.Time ( NominalDiffTime )
+import Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
-import qualified Data.Text as T
 import Text.Read ( readMaybe )
+import qualified Data.Text as T
+import qualified Graphics.Rendering.Chart as Chart
 
-import PlotHo.PlotChart ( GraphInfo(..), AxisScaling(..), XAxisType(..), newChartCanvas )
-import PlotHo.PlotTypes ( SignalTree, ListViewInfo(..), Getter )
+import PlotHo.PlotChart ( AxisScaling(..), displayChart, chartGtkUpdateCanvas )
+import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..) )
 
 -- make a new graph window
 newGraph ::
-  String ->
-  Gtk.ListStore (SignalTree a) ->
-  CC.MVar (S.Seq (a, Int, NominalDiffTime)) ->
-  IO Gtk.Window
-newGraph channame signalTreeStore chanseq = do
+  forall a
+  . String
+  -> (a -> a -> Bool)
+  -> (a -> [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))])
+  -> Gtk.ListStore a -> IO Gtk.Window
+newGraph channame sameSignalTree forestFromMeta msgStore = do
   win <- Gtk.windowNew
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
                    , Gtk.windowTitle := channame
                    ]
 
-  -- mvar with everything the graphs need to plot
-  graphInfoMVar <- CC.newMVar GraphInfo { giData = chanseq
-                                        , giXScaling = LinearScaling
+  -- mvar with all the user input
+  graphInfoMVar <- CC.newMVar GraphInfo { giXScaling = LinearScaling
                                         , giYScaling = LinearScaling
                                         , giXRange = Nothing
                                         , giYRange = Nothing
-                                        , giXAxisType = XAxisCounter
                                         , giGetters = []
-                                        }
+                                        } :: IO (CC.MVar (GraphInfo a))
+
+  let makeRenderable :: IO (Chart.Renderable ())
+      makeRenderable = do
+        gi <- CC.readMVar graphInfoMVar
+        size <- Gtk.listStoreGetSize msgStore
+
+        namePcs <- if size == 0
+                   then return []
+                   else do
+                     datalog <- Gtk.listStoreGetValue msgStore 0
+                     let ret :: [(String, [[(Double,Double)]])]
+                         ret = map (fmap (\g -> g datalog)) (giGetters gi)
+                     return ret
+        return $ displayChart (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi) namePcs
+
+  -- chart drawing area
+  chartCanvas <- Gtk.drawingAreaNew
+  _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
+
+  let redraw :: IO ()
+      redraw = do
+        renderable <- makeRenderable
+        chartGtkUpdateCanvas renderable chartCanvas
+
+  _ <- Gtk.onExpose chartCanvas $ const (redraw >> return True)
+
 
   -- the options widget
-  optionsWidget <- makeOptionsWidget graphInfoMVar
+  optionsWidget <- makeOptionsWidget graphInfoMVar redraw
   options <- Gtk.expanderNew "options"
   Gtk.set options [ Gtk.containerChild := optionsWidget
                   , Gtk.expanderExpanded := False
                   ]
 
+
   -- the signal selector
-  treeview' <- newSignalSelectorArea graphInfoMVar signalTreeStore
+  treeview' <- newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
   treeview <- Gtk.expanderNew "signals"
   Gtk.set treeview [ Gtk.containerChild := treeview'
                    , Gtk.expanderExpanded := True
@@ -68,9 +91,6 @@ newGraph channame signalTreeStore chanseq = do
     , Gtk.containerChild := treeview
     , Gtk.boxChildPacking treeview := Gtk.PackGrow
     ]
-
-  -- chart drawing area
-  chartCanvas <- newChartCanvas graphInfoMVar
 
   -- hbox to hold eveything
   hboxEverything <- Gtk.hBoxNew False 4
@@ -86,9 +106,14 @@ newGraph channame signalTreeStore chanseq = do
 
 
 
-newSignalSelectorArea :: forall a .
-  CC.MVar (GraphInfo a) -> Gtk.ListStore (SignalTree a) -> IO Gtk.ScrolledWindow
-newSignalSelectorArea graphInfoMVar signalTreeStore = do
+newSignalSelectorArea ::
+  forall a
+  . (a -> a -> Bool)
+  -> (a -> [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))])
+  -> CC.MVar (GraphInfo a)
+  -> Gtk.ListStore a
+  -> IO () -> IO Gtk.ScrolledWindow
+newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redraw = do
   treeStore <- Gtk.treeStoreNew []
   treeview <- Gtk.treeViewNewWithModel treeStore
 
@@ -127,8 +152,7 @@ newSignalSelectorArea graphInfoMVar signalTreeStore = do
               case tree' of Nothing -> return []
                             Just tree -> fmap (tree:) (getTrees (k+1))
         theTrees <- getTrees 0
-        let newGetters :: [(String, Getter a)]
-            newGetters = [ (lviName lvi, fromJust $ lviGetter lvi)
+        let newGetters = [ (lviName lvi, fromJust $ lviGetter lvi)
                          | lvi <- concatMap Tree.flatten theTrees
                          , lviMarked lvi
                          , isJust (lviGetter lvi)
@@ -145,32 +169,42 @@ newSignalSelectorArea graphInfoMVar signalTreeStore = do
     ret <- Gtk.treeStoreChange treeStore treePath g
     unless ret $ putStrLn "treeStoreChange fail"
     updateGraphInfo
+    redraw
 
 
   -- rebuild the signal tree
-  let rebuildSignalTree :: SignalTree a -> IO ()
-      rebuildSignalTree signalTree = do
-        let mkTreeNode :: (String, String, Maybe (Getter a)) -> ListViewInfo a
-            mkTreeNode (name,typeName,maybeget) = ListViewInfo name typeName maybeget False
+  let rebuildSignalTree :: [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))]
+                           -> IO ()
+      rebuildSignalTree meta = do
+        let mkTreeNode (name,typeName,maybeget) = ListViewInfo name typeName maybeget False
             newTrees :: [Tree.Tree (ListViewInfo a)]
-            newTrees = map (fmap mkTreeNode) signalTree
+            newTrees = map (fmap mkTreeNode) meta
         Gtk.treeStoreClear treeStore
         Gtk.treeStoreInsertForest treeStore [] 0 newTrees
         updateGraphInfo
 
+  oldMetaRef <- IORef.newIORef Nothing
+  let maybeRebuildSignalTree newMeta = do
+        oldMeta <- IORef.readIORef oldMetaRef
+        let sameSignalTree' Nothing _ = False
+            sameSignalTree' (Just x) y = sameSignalTree x y
+        unless (sameSignalTree' oldMeta newMeta) $ do
+          IORef.writeIORef oldMetaRef (Just newMeta)
+          rebuildSignalTree (forestFromMeta newMeta)
+
   -- on insert or change, rebuild the signal tree
-  _ <- on signalTreeStore Gtk.rowChanged $ \_ changedPath -> do
-    newMeta <- Gtk.listStoreGetValue signalTreeStore (Gtk.listStoreIterToIndex changedPath)
-    rebuildSignalTree newMeta
-  _ <- on signalTreeStore Gtk.rowInserted $ \_ changedPath -> do
-    newMeta <- Gtk.listStoreGetValue signalTreeStore (Gtk.listStoreIterToIndex changedPath)
-    rebuildSignalTree newMeta
+  _ <- on msgStore Gtk.rowChanged $ \_ changedPath -> do
+    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
+    maybeRebuildSignalTree newMsg >> redraw
+  _ <- on msgStore Gtk.rowInserted $ \_ changedPath -> do
+    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
+    maybeRebuildSignalTree newMsg >> redraw
 
   -- rebuild the signal tree right now if it exists
-  size <- Gtk.listStoreGetSize signalTreeStore
+  size <- Gtk.listStoreGetSize msgStore
   when (size > 0) $ do
-    newMeta <- Gtk.listStoreGetValue signalTreeStore 0
-    rebuildSignalTree newMeta
+    newMsg <- Gtk.listStoreGetValue msgStore 0
+    maybeRebuildSignalTree newMsg >> redraw
 
 
   scroll <- Gtk.scrolledWindowNew Nothing Nothing
@@ -181,8 +215,9 @@ newSignalSelectorArea graphInfoMVar signalTreeStore = do
   return scroll
 
 
-makeOptionsWidget :: CC.MVar (GraphInfo a) -> IO Gtk.VBox
-makeOptionsWidget graphInfoMVar = do
+
+makeOptionsWidget :: CC.MVar (GraphInfo a) -> IO () -> IO Gtk.VBox
+makeOptionsWidget graphInfoMVar redraw = do
   -- user selectable range
   xRange <- Gtk.entryNew
   yRange <- Gtk.entryNew
@@ -213,7 +248,7 @@ makeOptionsWidget graphInfoMVar = do
                       return ()
                     else do
                       _ <- CC.swapMVar graphInfoMVar (gi {giXRange = Just (z0,z1)})
-                      return ()
+                      redraw
   let updateYRange = do
         Gtk.set yRange [ Gtk.entryEditable := True
                        , Gtk.widgetSensitive := True
@@ -231,7 +266,7 @@ makeOptionsWidget graphInfoMVar = do
                       return ()
                     else do
                       _ <- CC.swapMVar graphInfoMVar (gi {giYRange = Just (z0,z1)})
-                      return ()
+                      redraw
   _ <- on xRange Gtk.entryActivate updateXRange
   _ <- on yRange Gtk.entryActivate updateYRange
 
@@ -266,7 +301,7 @@ makeOptionsWidget graphInfoMVar = do
             CC.modifyMVar_ graphInfoMVar $
               \gi -> return $ gi {giXScaling = LogScaling, giXRange = Nothing}
           _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 3"
-        return ()
+        redraw
   let updateYScaling = do
         k <- Gtk.comboBoxGetActive yScalingSelector
         _ <- case k of
@@ -287,40 +322,16 @@ makeOptionsWidget graphInfoMVar = do
             CC.modifyMVar_ graphInfoMVar $
               \gi -> return $ gi {giYScaling = LogScaling, giYRange = Nothing}
           _ -> error "the \"impossible\" happened: y scaling comboBox index should be < 3"
-        return ()
+        redraw
   updateXScaling
   updateYScaling
   _ <- on xScalingSelector Gtk.changed updateXScaling
   _ <- on yScalingSelector Gtk.changed updateYScaling
 
-  -- x axis type
-  xAxisTypeSelector <- Gtk.comboBoxNewText
-  mapM_ (Gtk.comboBoxAppendText xAxisTypeSelector . T.pack)
-    ["shifted counter","counter","shifted time","time"]
-  Gtk.comboBoxSetActive xAxisTypeSelector 0
-  xAxisTypeSelectorBox <- labeledWidget "x axis:" xAxisTypeSelector
-  let updateXAxisTypeSelector = do
-        k <- Gtk.comboBoxGetActive xAxisTypeSelector
-        _ <- case k of
-          0 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxisType = XAxisShiftedCounter}
-          1 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxisType = XAxisCounter}
-          2 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxisType = XAxisShiftedTime}
-          3 -> CC.modifyMVar_ graphInfoMVar $
-               \gi -> return $ gi {giXAxisType = XAxisTime}
-          _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 4"
-        return ()
-  updateXAxisTypeSelector
-  _ <- on xAxisTypeSelector Gtk.changed updateXAxisTypeSelector
-
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
 
-  Gtk.set vbox [ Gtk.containerChild := xAxisTypeSelectorBox
-               , Gtk.boxChildPacking   xAxisTypeSelectorBox := Gtk.PackNatural
-               , Gtk.containerChild := xScalingBox
+  Gtk.set vbox [ Gtk.containerChild := xScalingBox
                , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
                , Gtk.containerChild := xRangeBox
                , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural

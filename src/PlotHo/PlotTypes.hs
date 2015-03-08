@@ -6,6 +6,7 @@ module PlotHo.PlotTypes
        ( Channel(..)
        , GraphInfo(..)
        , ListViewInfo(..)
+       , MarkedState(..)
        , AxisScaling(..)
        ) where
 
@@ -13,13 +14,18 @@ import Data.Tree ( Tree )
 import qualified Graphics.UI.Gtk as Gtk
 import Data.IORef ( IORef )
 
+data MarkedState =
+  On | Off | Inconsistent deriving (Eq, Show)
+
 data ListViewInfo a =
   ListViewInfo
   { lviName :: String
   , lviType :: String
   , lviGetter :: Maybe (a -> [[(Double,Double)]])
-  , lviMarked :: Bool
+  , lviMarked :: MarkedState
   }
+instance Show (ListViewInfo a) where
+  show (ListViewInfo n t _ m) = "ListViewInfo " ++ show (n,t,m)
 
 data AxisScaling = LogScaling
                  | LinearScaling

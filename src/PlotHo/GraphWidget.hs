@@ -18,7 +18,7 @@ import qualified Data.Text as T
 import qualified Graphics.Rendering.Chart as Chart
 
 import PlotHo.PlotChart ( AxisScaling(..), displayChart, chartGtkUpdateCanvas )
-import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..) )
+import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..), MarkedState(..) )
 
 -- make a new graph window
 newGraph ::
@@ -138,7 +138,16 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
   Gtk.cellLayoutSetAttributes col1 renderer1 treeStore $
     \(ListViewInfo {lviName = name, lviType = typeName, lviGetter = getter}) ->
       [ Gtk.cellText := showName getter name typeName]
-  Gtk.cellLayoutSetAttributes col2 renderer2 treeStore $ \lvi -> [ Gtk.cellToggleActive := lviMarked lvi]
+  Gtk.cellLayoutSetAttributes col2 renderer2 treeStore $ \lvi -> case lviMarked lvi of
+    On -> [ Gtk.cellToggleInconsistent := False
+          , Gtk.cellToggleActive := True
+          ]
+    Off -> [ Gtk.cellToggleInconsistent := False
+           , Gtk.cellToggleActive := False
+           ]
+    Inconsistent -> [ Gtk.cellToggleActive := False
+                    , Gtk.cellToggleInconsistent := True
+                    ]
 
   _ <- Gtk.treeViewAppendColumn treeview col1
   _ <- Gtk.treeViewAppendColumn treeview col2
@@ -154,7 +163,7 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
         theTrees <- getTrees 0
         let newGetters = [ (lviName lvi, fromJust $ lviGetter lvi)
                          | lvi <- concatMap Tree.flatten theTrees
-                         , lviMarked lvi
+                         , lviMarked lvi == On
                          , isJust (lviGetter lvi)
                          ]
         _ <- CC.modifyMVar_ graphInfoMVar (\gi0 -> return $ gi0 { giGetters = newGetters })
@@ -162,12 +171,68 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
 
   -- update which y axes are visible
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
-    let treePath = Gtk.stringToTreePath pathStr
+    let i2p i = Gtk.treeModelGetPath treeStore i
+        p2i p = do
+          mi <- Gtk.treeModelGetIter treeStore p
+          case mi of Nothing -> error "no iter at that path"
+                     Just i -> return i
+        treePath = Gtk.stringToTreePath pathStr
+
+        getChildrenPaths path' = do
+          iter' <- p2i path'
+          let getChildPath k = do
+                mc <- Gtk.treeModelIterNthChild treeStore (Just iter') k
+                case mc of
+                  Nothing -> error "no child"
+                  Just c -> i2p c
+          n <- Gtk.treeModelIterNChildren treeStore (Just iter')
+          mapM getChildPath (take n [0..])
+
+        changeSelfAndChildren change path' = do
+          childrenPaths <- getChildrenPaths path'
+          ret <- Gtk.treeStoreChange treeStore path' change
+          when (not ret) $ error "treeStoreChange fail"
+          mapM_ (changeSelfAndChildren change) childrenPaths
+
+        fixInconsistent path' = do
+          mparentIter <- p2i path' >>= Gtk.treeModelIterParent treeStore
+          case mparentIter of
+            Nothing -> return ()
+            Just parentIter -> do
+              parentPath <- i2p parentIter
+              siblingPaths <- getChildrenPaths parentPath
+              siblings <- mapM (Gtk.treeStoreGetValue treeStore) siblingPaths
+              let markedSiblings :: [MarkedState]
+                  markedSiblings = map lviMarked siblings
+
+                  changeParent
+                    | all (== On) markedSiblings =
+                        Gtk.treeStoreChange treeStore parentPath (\lvi -> lvi {lviMarked = On})
+                    | all (== Off) markedSiblings =
+                        Gtk.treeStoreChange treeStore parentPath (\lvi -> lvi {lviMarked = Off})
+                    | otherwise =
+                        Gtk.treeStoreChange treeStore parentPath (\lvi -> lvi {lviMarked = Inconsistent})
+              ret <- changeParent
+              when (not ret) $ error "fixInconsistent couldn't change parent"
+              fixInconsistent parentPath
+              return ()
+
     -- toggle the check mark
-    let g lvi@(ListViewInfo _ _ Nothing _) = lvi
-        g lvi = lvi {lviMarked = not (lviMarked lvi)}
-    ret <- Gtk.treeStoreChange treeStore treePath g
-    unless ret $ putStrLn "treeStoreChange fail"
+    val <- Gtk.treeStoreGetValue treeStore treePath
+    case val of
+      (ListViewInfo _ _ Nothing Off) ->
+        changeSelfAndChildren (\lvi -> lvi {lviMarked = On}) treePath
+      (ListViewInfo _ _ Nothing On) ->
+        changeSelfAndChildren (\lvi -> lvi {lviMarked = Off}) treePath
+      (ListViewInfo _ _ Nothing Inconsistent) ->
+        changeSelfAndChildren (\lvi -> lvi {lviMarked = On}) treePath
+      lvi@(ListViewInfo _ _ (Just _) On) ->
+        Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = Off}
+      lvi@(ListViewInfo _ _ (Just _) Off) ->
+        Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = On}
+      (ListViewInfo _ _ (Just _) Inconsistent) -> error "cell getter can't be inconsistent"
+
+    fixInconsistent treePath
     updateGraphInfo
     redraw
 

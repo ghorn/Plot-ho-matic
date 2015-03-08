@@ -321,15 +321,17 @@ newChannelWidget channel graphWindowsToBeKilled = do
 
   -- button to clear history
   buttonAlsoDoNothing <- Gtk.buttonNewWithLabel "also do nothing"
-  _ <- Gtk.onClicked buttonAlsoDoNothing $ do
-    putStrLn "i promise, nothing happens"
-    -- CC.modifyMVar_ logData (const (return S.empty))
-    return ()
+--  _ <- Gtk.onClicked buttonAlsoDoNothing $ do
+--    putStrLn "i promise, nothing happens"
+--    -- CC.modifyMVar_ logData (const (return S.empty))
+--    return ()
+  let triggerYo action = Gtk.onClicked buttonAlsoDoNothing action >> return ()
 
   -- button to make a new graph
   buttonNew <- Gtk.buttonNewWithLabel "new graph"
   _ <- Gtk.onClicked buttonNew $ do
     graphWin <- newGraph
+                triggerYo
                 (chanName channel)
                 (chanSameSignalTree channel)
                 (chanToSignalTree channel)

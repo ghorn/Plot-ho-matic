@@ -8,6 +8,7 @@ module PlotHo.GraphWidget
 import qualified Control.Concurrent as CC
 import Control.Monad ( when, unless )
 import qualified Data.IORef as IORef
+import qualified Data.Map as M
 import Data.Maybe ( isJust, fromJust )
 import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
@@ -23,11 +24,12 @@ import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..), MarkedState(..) )
 -- make a new graph window
 newGraph ::
   forall a
-  . String
+  . (IO () -> IO ())
+  -> String
   -> (a -> a -> Bool)
   -> (a -> [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))])
   -> Gtk.ListStore a -> IO Gtk.Window
-newGraph channame sameSignalTree forestFromMeta msgStore = do
+newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   win <- Gtk.windowNew
 
   _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
@@ -77,7 +79,7 @@ newGraph channame sameSignalTree forestFromMeta msgStore = do
 
 
   -- the signal selector
-  treeview' <- newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
+  treeview' <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
   treeview <- Gtk.expanderNew "signals"
   Gtk.set treeview [ Gtk.containerChild := treeview'
                    , Gtk.expanderExpanded := True
@@ -108,12 +110,13 @@ newGraph channame sameSignalTree forestFromMeta msgStore = do
 
 newSignalSelectorArea ::
   forall a
-  . (a -> a -> Bool)
+  . (IO () -> IO ())
+  -> (a -> a -> Bool)
   -> (a -> [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))])
   -> CC.MVar (GraphInfo a)
   -> Gtk.ListStore a
   -> IO () -> IO Gtk.ScrolledWindow
-newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redraw = do
+newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw = do
   treeStore <- Gtk.treeStoreNew []
   treeview <- Gtk.treeViewNewWithModel treeStore
 
@@ -137,7 +140,8 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
       showName Nothing name typeName = name ++ " (" ++ typeName ++ ")"
   Gtk.cellLayoutSetAttributes col1 renderer1 treeStore $
     \(ListViewInfo {lviName = name, lviType = typeName, lviGetter = getter}) ->
-      [ Gtk.cellText := showName getter name typeName]
+      [ Gtk.cellText := showName getter name typeName
+      ]
   Gtk.cellLayoutSetAttributes col2 renderer2 treeStore $ \lvi -> case lviMarked lvi of
     On -> [ Gtk.cellToggleInconsistent := False
           , Gtk.cellToggleActive := True
@@ -169,14 +173,15 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
         _ <- CC.modifyMVar_ graphInfoMVar (\gi0 -> return $ gi0 { giGetters = newGetters })
         return ()
 
+      i2p i = Gtk.treeModelGetPath treeStore i
+      p2i p = do
+        mi <- Gtk.treeModelGetIter treeStore p
+        case mi of Nothing -> error "no iter at that path"
+                   Just i -> return i
+
   -- update which y axes are visible
   _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
-    let i2p i = Gtk.treeModelGetPath treeStore i
-        p2i p = do
-          mi <- Gtk.treeModelGetIter treeStore p
-          case mi of Nothing -> error "no iter at that path"
-                     Just i -> return i
-        treePath = Gtk.stringToTreePath pathStr
+    let treePath = Gtk.stringToTreePath pathStr
 
         getChildrenPaths path' = do
           iter' <- p2i path'
@@ -236,20 +241,47 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
     updateGraphInfo
     redraw
 
+  let getTopForest = do
+        nTopLevelNodes <- Gtk.treeModelIterNChildren treeStore Nothing
+        mnodes <- mapM (Gtk.treeModelIterNthChild treeStore Nothing) (take nTopLevelNodes [0..])
+        let treeFromJust (Just x) = i2p x >>= Gtk.treeStoreGetTree treeStore
+            treeFromJust Nothing = error "missing top level node"
+        mapM treeFromJust mnodes
 
   -- rebuild the signal tree
   let rebuildSignalTree :: [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))]
                            -> IO ()
       rebuildSignalTree meta = do
-        let mkTreeNode (name,typeName,maybeget) = ListViewInfo name typeName maybeget False
-            newTrees :: [Tree.Tree (ListViewInfo a)]
-            newTrees = map (fmap mkTreeNode) meta
+        putStrLn "rebuilding signal tree"
+
+        oldTrees <- getTopForest
+        let _ = oldTrees :: [Tree.Tree (ListViewInfo a)]
+
+            merge :: forall b
+                     . [Tree.Tree (ListViewInfo b)]
+                     -> [Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))]
+                     -> [Tree.Tree (ListViewInfo a)]
+            merge old new = map convert new
+              where
+                oldMap :: M.Map (String, String) (ListViewInfo b, [Tree.Tree (ListViewInfo b)])
+                oldMap = M.fromList $
+                         map (\(Tree.Node lvi lvis) -> ((lviName lvi, lviType lvi), (lvi, lvis))) old
+
+                convert :: Tree.Tree (String, String, Maybe (a -> [[(Double, Double)]]))
+                           -> Tree.Tree (ListViewInfo a)
+                convert (Tree.Node (name,typ, getter) others) = case M.lookup (name,typ) oldMap of
+                  Nothing -> Tree.Node (ListViewInfo name typ getter Off) (merge [] others)
+                  Just (lvi, oldOthers) -> Tree.Node (ListViewInfo name typ getter (lviMarked lvi)) (merge oldOthers others)
+
+            newTrees = merge oldTrees meta
+
         Gtk.treeStoreClear treeStore
         Gtk.treeStoreInsertForest treeStore [] 0 newTrees
         updateGraphInfo
 
   oldMetaRef <- IORef.newIORef Nothing
-  let maybeRebuildSignalTree newMeta = do
+  let maybeRebuildSignalTree :: a -> IO ()
+      maybeRebuildSignalTree newMeta = do
         oldMeta <- IORef.readIORef oldMetaRef
         let sameSignalTree' Nothing _ = False
             sameSignalTree' (Just x) y = sameSignalTree x y
@@ -270,6 +302,11 @@ newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redra
   when (size > 0) $ do
     newMsg <- Gtk.listStoreGetValue msgStore 0
     maybeRebuildSignalTree newMsg >> redraw
+
+  -- for debugging
+  onButton $ do
+    newMsg <- Gtk.listStoreGetValue msgStore 0
+    rebuildSignalTree (forestFromMeta newMsg) >> redraw
 
 
   scroll <- Gtk.scrolledWindowNew Nothing Nothing

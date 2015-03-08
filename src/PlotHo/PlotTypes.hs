@@ -6,8 +6,8 @@ module PlotHo.PlotTypes
        ( Channel(..)
        , GraphInfo(..)
        , ListViewInfo(..)
-       , MarkedState(..)
        , AxisScaling(..)
+       , MarkedState(..)
        ) where
 
 import Data.Tree ( Tree )

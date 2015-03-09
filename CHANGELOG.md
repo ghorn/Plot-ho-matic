@@ -26,3 +26,8 @@ remove Generic requirement for some Lookup instances
 * Major performance improvements (only draw new data)
 * Both "history" and custom plot interfaces
 * Unify this package with the dynobud plotter
+
+0.5.0.1
+---
+* Hierarchical visibility clicking and inconsistent state
+* Merge new signal tree with old

@@ -29,16 +29,13 @@ library
                      , containers
                      , lens
                      , data-default-class
-                     , stm
                      , glib
                      , gtk >= 0.13
                      , time
                      , Chart >= 1.1
                      , Chart-cairo >= 1.1
                      , cairo
-                     , linear
                      , text
-                     , spatial-math >= 0.2.0
                      , generic-accessors >= 0.1.0.0
 
   ghc-options:      -O2 -Wall

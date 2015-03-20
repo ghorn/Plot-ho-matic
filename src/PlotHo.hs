@@ -4,11 +4,12 @@
 
 module PlotHo
        ( Plotter
-       , XAxisType(..)
-       , Lookup
-       , addChannel
-       , addHistoryChannel
        , runPlotter
+       , XAxisType(..)
+       , addHistoryChannel
+       , addChannel
+         -- * re-exported for convenience
+       , Lookup
        ) where
 
 import qualified GHC.Stats
@@ -36,7 +37,7 @@ import Accessors
 import PlotHo.PlotTypes ( Channel(..) )
 import PlotHo.GraphWidget ( newGraph )
 
-
+-- | add channels to this, then run it with 'runPlotter'
 newtype Plotter a = Plotter { unPlotter :: IO (a, [ChannelStuff]) } deriving Functor
 
 instance Applicative Plotter where
@@ -71,10 +72,14 @@ data ChannelStuff =
   , csMkChanEntry :: CC.MVar [Gtk.Window] -> IO Gtk.VBox
   }
 
-
+-- | Simplified time-series channel which passes a "send message" function to a worker and forks it using 'forkIO'.
+-- The plotter will plot a time series of messages sent by the worker.
+-- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
 addHistoryChannel ::
   Lookup a
-  => String -> XAxisType -> ((a -> Bool -> IO ()) -> IO ())
+  => String -- ^ channel name
+  -> XAxisType -- ^ what to use for the X axis
+  -> ((a -> Bool -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
   -> Plotter ()
 addHistoryChannel name xaxisType action = do
   (chan, newMessage) <- liftIO $ newHistoryChannel name xaxisType
@@ -83,12 +88,16 @@ addHistoryChannel name xaxisType action = do
                     , csMkChanEntry = newChannelWidget chan
                     }
 
-
+-- | This is the general interface to plot whatever you want.
+-- Use this when you want to give the whole time series in one go, rather than one at a time
+-- such as with 'addHistoryChannel'.
+-- Using types or data, you must encode the signal tree with the message so that
+-- the plotter can build you the nice message toggle tree.
 addChannel ::
-  String
-  -> (a -> a -> Bool)
-  -> (a -> [Tree (String, String, Maybe (a -> [[(Double, Double)]]))])
-  -> ((a -> IO ()) -> IO ())
+  String -- ^ channel name
+  -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
+  -> (a -> [Tree (String, String, Maybe (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
+  -> ((a -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
   -> Plotter ()
 addChannel name sameSignalTree toSignalTree action = do
   (chan, newMessage) <- liftIO $ newChannel name sameSignalTree toSignalTree
@@ -132,10 +141,10 @@ data History a = History (S.Seq (a, Int, NominalDiffTime))
 type SignalTree a = Tree.Forest (String, String, Maybe (History a -> [[(Double, Double)]]))
 
 data XAxisType =
-  XAxisTime
-  | XAxisCount
-  | XAxisTime0
-  | XAxisCount0
+  XAxisTime -- ^ time since the first message
+  | XAxisTime0 -- ^ time since the first message, normalized to 0 (to reduce plot jitter)
+  | XAxisCount -- ^ message index
+  | XAxisCount0 -- ^ message index, normalized to 0 (to reduce plot jitter)
 
 sameHistorySignalTree :: Lookup a => XAxisType -> a -> a -> Bool
 sameHistorySignalTree xaxisType x y = hx == hy
@@ -241,7 +250,7 @@ newHistoryChannel name xaxisType = do
 
   return (retChan, newMessage)
 
-
+-- | fire up the the GUI
 runPlotter :: Plotter () -> IO ()
 runPlotter plotterMonad = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled

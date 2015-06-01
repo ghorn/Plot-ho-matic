@@ -6,7 +6,7 @@ module PlotHo.GraphWidget
        ) where
 
 import qualified Control.Concurrent as CC
-import Control.Monad ( when, unless )
+import Control.Monad ( void, when, unless )
 import qualified Data.IORef as IORef
 import qualified Data.Map as M
 import Data.Maybe ( isJust, fromJust )
@@ -62,10 +62,22 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   chartCanvas <- Gtk.drawingAreaNew
   _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
 
+  latestRenderableMVar <- CC.newEmptyMVar
+
   let redraw :: IO ()
       redraw = do
         renderable <- makeRenderable
-        chartGtkUpdateCanvas renderable chartCanvas
+        maybeLatestRenderable <- CC.tryTakeMVar latestRenderableMVar
+        case maybeLatestRenderable of
+         -- the other action is still waiting
+         Just _ -> CC.putMVar latestRenderableMVar renderable
+         -- there is no action waiting, post the action
+         Nothing -> do CC.putMVar latestRenderableMVar renderable
+                       void $ flip Gtk.idleAdd Gtk.priorityDefaultIdle $ do
+                         -- this might not be the same one if the messages have accumulated
+                         latestRenderable <- CC.takeMVar latestRenderableMVar
+                         chartGtkUpdateCanvas latestRenderable chartCanvas
+                         return False -- we're done now, don't call this again
 
   _ <- Gtk.onExpose chartCanvas $ const (redraw >> return True)
 

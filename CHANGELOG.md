@@ -31,3 +31,7 @@ remove Generic requirement for some Lookup instances
 ---
 * Hierarchical visibility clicking and inconsistent state
 * Merge new signal tree with old
+
+0.5.0.4
+---
+* Performance improvement

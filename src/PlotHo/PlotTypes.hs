@@ -24,6 +24,7 @@ data ListViewInfo a =
   , lviGetter :: Maybe (a -> [[(Double,Double)]])
   , lviMarked :: MarkedState
   }
+
 instance Show (ListViewInfo a) where
   show (ListViewInfo n t _ m) = "ListViewInfo " ++ show (n,t,m)
 

@@ -35,3 +35,7 @@ remove Generic requirement for some Lookup instances
 0.5.0.4
 ---
 * Performance improvement
+
+0.5.0.5
+---
+* Compatability with generic-accessors 0.2

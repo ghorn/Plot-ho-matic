@@ -165,8 +165,15 @@ historySignalTree x axisType = case accessors x of
        (myName, parentName, Nothing)
        (concatMap (\(getterName,child) -> makeSignalTree' getterName pn child) children)
       ]
-    makeSignalTree' myName parentName (ATGetter getter) =
-      [Tree.Node (myName, parentName, Just (toHistoryGetter getter)) []]
+    makeSignalTree' myName parentName (ATGetter (getter, _)) =
+      [Tree.Node (myName, parentName, Just (toHistoryGetter (toDoubleGetter getter))) []]
+    toDoubleGetter :: Getter a -> (a -> Double)
+    toDoubleGetter (GetDouble f) = f
+    toDoubleGetter (GetFloat f) = realToFrac . f
+    toDoubleGetter (GetBool f) = fromIntegral . fromEnum . f
+    toDoubleGetter (GetInt f) = fromIntegral . f
+    toDoubleGetter GetSorry = const 0
+
     toHistoryGetter :: (a -> Double) -> History a -> [[(Double, Double)]]
     toHistoryGetter = case axisType of
       XAxisTime   -> timeGetter

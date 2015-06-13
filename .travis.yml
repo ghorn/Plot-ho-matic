@@ -1,7 +1,7 @@
 # from https://github.com/hvr/multi-ghc-travis
 
 env:
- - GHCVER=7.6.3 # todo: re-enable this
+ - GHCVER=7.6.3
  - GHCVER=7.8.4 # see note about Alex/Happy
  - GHCVER=7.10.1 # see note about Alex/Happy
 
@@ -16,6 +16,7 @@ install:
  - cabal install alex
  - cabal install happy
  - cabal install gtk2hs-buildtools
+ - cabal install Cabal
  - cabal install --only-dependencies --enable-tests --enable-benchmarks
 
 # Here starts the actual work to be performed for the package under test; any command which exits with a non-zero exit code causes the build to fail.

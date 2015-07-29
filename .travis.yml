@@ -17,6 +17,7 @@ install:
  - cabal install happy
  - cabal install gtk2hs-buildtools
  - for pkg in $(ghc-pkg list --user); do ghc-pkg unregister --force ${pkg}; done
+ - cabal install Cabal
  - cabal install --only-dependencies --enable-tests --enable-benchmarks --reorder-goals
 
 # Here starts the actual work to be performed for the package under test; any command which exits with a non-zero exit code causes the build to fail.
@@ -28,7 +29,7 @@ script:
  - cabal sdist   # tests that a source-distribution can be generated
 
 # The following scriptlet checks that the resulting source distribution can be built & installed
- - export SRC_TGZ=$(cabal-1.22 info . | awk '{print $2 ".tar.gz";exit}') ;
+ - export SRC_TGZ=$(cabal info . | awk '{print $2 ".tar.gz";exit}') ;
    cd dist/;
    if [ -f "$SRC_TGZ" ]; then
       cabal install "$SRC_TGZ";

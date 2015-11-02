@@ -1,6 +1,6 @@
 name:                Plot-ho-matic
-version:             0.5.0.5
-synopsis:            Real-time line plotter for protobuf-like data
+version:             0.6.0.0
+synopsis:            Real-time line plotter for generic data
 license:             BSD3
 license-file:        LICENSE
 author:              Greg Horn

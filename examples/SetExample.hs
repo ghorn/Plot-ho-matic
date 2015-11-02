@@ -5,6 +5,9 @@
 module Main ( Bar(..), Foo(..), main ) where
 
 import GHC.Generics ( Generic )
+
+import Data.IORef ( newIORef, readIORef, writeIORef )
+
 import SetHo ( runSetter )
 import Accessors ( Lookup )
 
@@ -28,7 +31,8 @@ initialFoo :: Foo
 initialFoo = Foo pi 42 (Bar 1 2 True)
 
 main :: IO ()
-main = runSetter initialFoo refresh commit
-  where
-    refresh = return initialFoo
-    commit x = print x
+main = do
+  fooRef <- newIORef initialFoo
+  let refresh = readIORef fooRef
+      commit x = print x >> writeIORef fooRef x
+  runSetter initialFoo refresh commit

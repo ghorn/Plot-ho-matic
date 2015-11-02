@@ -12,6 +12,7 @@ import qualified Control.Concurrent as CC
 import Data.List ( foldl' )
 import qualified Data.IORef as IORef
 import qualified Data.Tree as Tree
+import Control.Lens ( (.~), (^.) )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
@@ -19,15 +20,15 @@ import Text.Read ( readMaybe )
 import qualified Data.Text as T
 import Text.Printf ( printf )
 
-import Accessors ( Lookup, AccessorTree(..), Getter(..), Setter(..), accessors )
+import Accessors ( Lookup, AccessorTree(..), Field(..), accessors, describeField )
 
 data ListViewInfo a =
   ListViewInfo
   { lviName :: String
   , lviType :: String
-  , lviGetter :: Maybe (Getter a, Setter a)
+  , lviField :: Maybe (Field a)
   , lviMarked :: Bool
-  , lviMutator :: a -> a
+  , lviStagedMutator :: a -> a
   , lviUpstreamValue :: a
   , lviShownValue :: String
   }
@@ -42,11 +43,11 @@ data GraphInfo a =
             , giValue :: a
             }
 
-type SignalTree a = Tree.Forest (String, String, Maybe (Getter a, Setter a))
+type SignalTree a = Tree.Forest (String, String, Maybe (Field a))
 
-toSignalTree :: forall a . Lookup a => a -> SignalTree a -- Tree.Forest (String, String, Maybe (Getter a, Setter a))
-toSignalTree x = case accessors x of
-  (ATGetter _) -> error "makeSignalTree: got an accessor right away"
+toSignalTree :: forall a . Lookup a => SignalTree a
+toSignalTree = case (accessors :: AccessorTree a) of
+  (Field _) -> error "toSignalTree: got an accessor right away"
   d -> Tree.subForest $ head $ makeSignalTree' "" "" d
   where
     makeSignalTree' :: String -> String -> AccessorTree a -> SignalTree a
@@ -55,8 +56,8 @@ toSignalTree x = case accessors x of
        (myName, parentName, Nothing)
        (concatMap (\(getterName,child) -> makeSignalTree' getterName pn child) children)
       ]
-    makeSignalTree' myName parentName (ATGetter getSet) =
-      [Tree.Node (myName, parentName, Just getSet) []]
+    makeSignalTree' myName parentName (Field f) =
+      [Tree.Node (myName, parentName, Just f) []]
 
 
 
@@ -67,7 +68,7 @@ newLookupTreeview ::
   -> Gtk.ListStore a
   -> IO (Gtk.ScrolledWindow, IO a)
 newLookupTreeview initialValue msgStore = do
-  let signalTree = toSignalTree initialValue
+  let signalTree = toSignalTree
 
   treeStore <- Gtk.treeStoreNew []
   treeview <- Gtk.treeViewNewWithModel treeStore
@@ -119,29 +120,26 @@ newLookupTreeview initialValue msgStore = do
       showName Nothing name typeName = name ++ " (" ++ typeName ++ ")"
 
   Gtk.cellLayoutSetAttributes colName rendererName treeStore $
-    \(ListViewInfo {lviName = name, lviType = typeName, lviGetter = getter}) ->
-      [ Gtk.cellText := showName getter name typeName
+    \(ListViewInfo {lviName = name, lviType = typeName, lviField = field}) ->
+      [ Gtk.cellText := showName field name typeName
       ]
 
   -- data type
-  let showType (Just (GetBool _, SetBool _)) = "Bool"
-      showType (Just (GetDouble _, SetDouble _)) = "Double"
-      showType (Just (GetFloat _, SetFloat _)) = "Float"
-      showType (Just (GetInt _, SetInt _)) = "Int"
-      showType (Just (GetString _, SetString _)) = "String"
-      showType _ = ""
- 
+  let showType (Just x) = describeField x
+      showType Nothing = ""
+
   Gtk.cellLayoutSetAttributes colType rendererType treeStore $
-        \lvi -> [ Gtk.cellText := showType (lviGetter lvi) ]
+        \lvi -> [ Gtk.cellText := showType (lviField lvi) ]
 
   -- upstream value
-  let showUpstreamValue lvi = case lviGetter lvi of
-         (Just (GetBool get, _)) -> show (get upstream)
-         (Just (GetDouble get, _)) -> printf "%.2g" (get upstream)
-         (Just (GetFloat get, _))  -> printf "%.2g" (get upstream)
-         (Just (GetInt get, _))  -> show (get upstream)
-         (Just (GetString get, _))  -> get upstream
-         _ -> ""
+  let showUpstreamValue lvi = case lviField lvi of
+         (Just (FieldBool f)) -> show (upstream ^. f)
+         (Just (FieldDouble f)) -> printf "%.2g" (upstream ^. f)
+         (Just (FieldFloat f))  -> printf "%.2g" (upstream ^. f)
+         (Just (FieldInt f))  -> show (upstream ^. f)
+         (Just (FieldString f))  -> upstream ^. f
+         Just FieldSorry -> ""
+         Nothing -> ""
          where
            upstream = lviUpstreamValue lvi
 
@@ -151,18 +149,19 @@ newLookupTreeview initialValue msgStore = do
                 ]
 
   -- staged value
-  let showStagedValue lvi = case lviGetter lvi of
-         Just (GetBool get, _) -> show (get staged)
-         Just (GetDouble get, _) -> printf "%.2g" (get staged)
-         Just (GetFloat get, _)  -> printf "%.2g" (get staged)
-         Just (GetInt get, _)  -> show (get staged)
-         Just (GetString get, _)  -> get staged
-         _ -> ""
+  let showStagedValue lvi = case lviField lvi of
+         Just (FieldBool f) -> show (staged ^. f)
+         Just (FieldDouble f) -> printf "%.2g" (staged ^. f)
+         Just (FieldFloat f)  -> printf "%.2g" (staged ^. f)
+         Just (FieldInt f)  -> show (staged ^. f)
+         Just (FieldString f)  -> staged ^. f
+         Just FieldSorry -> ""
+         Nothing -> ""
          where
-           staged = lviMutator lvi (lviUpstreamValue lvi)
+           staged = lviStagedMutator lvi (lviUpstreamValue lvi)
 
   Gtk.cellLayoutSetAttributes colStagedValue rendererStagedValue treeStore $
-        \lvi -> case lviGetter lvi of
+        \lvi -> case lviField lvi of
            Just _ -> [ Gtk.cellText := showStagedValue lvi
                      , Gtk.cellTextEditable := True
                      ]
@@ -172,28 +171,30 @@ newLookupTreeview initialValue msgStore = do
   _ <- on rendererStagedValue Gtk.edited $ \treePath txt -> do
     let _ = txt :: String
     lvi0 <- Gtk.treeStoreGetValue treeStore treePath
-    let lvi = case lviGetter lvi0 of
-          Just (_, SetBool set)
-            | txt `elem` ["t","true","True","1"] -> lvi0 { lviMutator = set True, lviMarked = True }
-            | txt `elem` ["f","false","False","0"] -> lvi0 {lviMutator = set False, lviMarked = False }
+    let lvi = case lviField lvi0 of
+          Just (FieldBool f)
+            | txt `elem` ["t","true","True","1"] ->
+                lvi0 { lviStagedMutator = f .~ True, lviMarked = True }
+            | txt `elem` ["f","false","False","0"] ->
+                lvi0 {lviStagedMutator = f .~ False, lviMarked = False }
             | otherwise -> lvi0
-          Just (_, SetDouble set) -> case readMaybe txt of
+          Just (FieldDouble f) -> case readMaybe txt of
              Nothing -> lvi0
-             Just x -> lvi0 { lviMutator = set x }
-          Just (_, SetFloat set) -> case readMaybe txt of
+             Just x -> lvi0 { lviStagedMutator = f .~ x }
+          Just (FieldFloat f) -> case readMaybe txt of
              Nothing -> lvi0
-             Just x -> lvi0 { lviMutator = set x }
-          Just (_, SetInt set) -> case readMaybe txt of
+             Just x -> lvi0 { lviStagedMutator = f .~ x }
+          Just (FieldInt f) -> case readMaybe txt of
              Nothing -> lvi0
-             Just x -> lvi0 { lviMutator = set x }
-          Just (_, SetString set) -> lvi0 { lviMutator = set txt }
-          Just (_, SetSorry) -> lvi0
+             Just x -> lvi0 { lviStagedMutator = f .~ x }
+          Just (FieldString f) -> lvi0 { lviStagedMutator = f .~ txt }
+          Just FieldSorry -> lvi0
           Nothing -> lvi0
     Gtk.treeStoreSetValue treeStore treePath lvi
     return ()
 
   -- bool
-  let toShownBool marked (Just (GetBool _, SetBool _)) =
+  let toShownBool marked (Just (FieldBool _)) =
          [ Gtk.cellToggleInconsistent := False
          , Gtk.cellToggleActive := marked
          , Gtk.cellToggleActivatable := True
@@ -209,7 +210,7 @@ newLookupTreeview initialValue msgStore = do
          ]
 
   Gtk.cellLayoutSetAttributes colBool rendererBool treeStore $
-        \lvi -> toShownBool (lviMarked lvi) (lviGetter lvi)
+        \lvi -> toShownBool (lviMarked lvi) (lviField lvi)
 
   _ <- on rendererBool Gtk.cellToggled $ \pathStr -> do
     let treePath = Gtk.stringToTreePath pathStr
@@ -217,10 +218,13 @@ newLookupTreeview initialValue msgStore = do
     let newMarked :: Bool
         newMarked = not (lviMarked lvi0)
         newMutator :: a -> a
-        newMutator = case lviGetter lvi0 of
-          Just (_, SetBool set) -> set newMarked
-          _ -> error "the new mutator must be a bool mutator"
-    Gtk.treeStoreSetValue treeStore treePath (lvi0 {lviMarked = newMarked, lviMutator = newMutator})
+        newMutator = case lviField lvi0 of
+          Just (FieldBool f) -> f .~ newMarked
+          Just f -> error $ "the new mutator must be a bool mutator, got "
+                    ++ describeField f
+          Nothing -> error "the new mutator must be not Nothing"
+    Gtk.treeStoreSetValue treeStore treePath
+      (lvi0 {lviMarked = newMarked, lviStagedMutator = newMutator})
     return ()
 
   -- spin
@@ -229,13 +233,14 @@ newLookupTreeview initialValue msgStore = do
 
 
   let -- build the signal tree
-      convert :: Tree.Tree (String, String, Maybe (Getter a, Setter a))
+      convert :: Tree.Tree (String, String, Maybe (Field a))
                  -> Tree.Tree (ListViewInfo a)
       convert (Tree.Node (name, typ, getter) others) =
-        Tree.Node (ListViewInfo name typ getter marked id initialValue "") (map convert others)
+        Tree.Node (ListViewInfo name typ getter marked id initialValue "")
+        (map convert others)
         where
-          marked = case getter of
-            Just (GetBool get, _) -> get initialValue
+          marked = case (getter :: Maybe (Field a)) of
+            Just (FieldBool f) -> initialValue ^. f
             _ -> False
 
   Gtk.treeStoreClear treeStore
@@ -281,7 +286,7 @@ newLookupTreeview initialValue msgStore = do
   let getLatest = do
         lvis <- getAll
         latestUpstream <- IORef.readIORef latestUpstreamRef
-        return (foldl' (flip lviMutator) latestUpstream lvis)
+        return (foldl' (flip lviStagedMutator) latestUpstream lvis)
 
   return (scroll, getLatest)
 

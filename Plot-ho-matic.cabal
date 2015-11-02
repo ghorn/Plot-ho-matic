@@ -40,7 +40,7 @@ library
                      , Chart-cairo >= 1.1
                      , cairo
                      , text
-                     , generic-accessors >= 0.2.0
+                     , generic-accessors >= 0.5.0.0
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts

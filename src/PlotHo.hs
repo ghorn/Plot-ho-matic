@@ -15,6 +15,7 @@ module PlotHo
 import qualified GHC.Stats
 
 import Control.Applicative ( Applicative(..), liftA2 )
+import Control.Lens ( (^.) )
 import Data.Monoid ( mappend, mempty )
 import Control.Monad ( when )
 import qualified Control.Concurrent as CC
@@ -75,6 +76,9 @@ data ChannelStuff =
 -- | Simplified time-series channel which passes a "send message" function to a worker and forks it using 'forkIO'.
 -- The plotter will plot a time series of messages sent by the worker.
 -- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
+-- You will have to recompile the plotter if the types change.
+-- If you don't want to do this, use the more generic "addChannel" interface
+-- and use a type like a Tree to represent your data.
 addHistoryChannel ::
   Lookup a
   => String -- ^ channel name
@@ -146,17 +150,9 @@ data XAxisType =
   | XAxisCount -- ^ message index
   | XAxisCount0 -- ^ message index, normalized to 0 (to reduce plot jitter)
 
-sameHistorySignalTree :: Lookup a => XAxisType -> a -> a -> Bool
-sameHistorySignalTree xaxisType x y = hx == hy
-  where
-    hx = map (fmap f) $ historySignalTree x xaxisType
-    hy = map (fmap f) $ historySignalTree y xaxisType
-
-    f (n1, n2, mg) = (n1, n2, fmap (const ()) mg)
-
-historySignalTree :: forall a . Lookup a => a -> XAxisType -> SignalTree a
-historySignalTree x axisType = case accessors x of
-  (ATGetter _) -> error "makeSignalTree: got an accessor right away"
+historySignalTree :: forall a . Lookup a => XAxisType -> SignalTree a
+historySignalTree axisType = case accessors of
+  (Field _) -> error "historySignalTree: got a Field right away"
   d -> Tree.subForest $ head $ makeSignalTree' "" "" d
   where
     makeSignalTree' :: String -> String -> AccessorTree a -> SignalTree a
@@ -165,14 +161,16 @@ historySignalTree x axisType = case accessors x of
        (myName, parentName, Nothing)
        (concatMap (\(getterName,child) -> makeSignalTree' getterName pn child) children)
       ]
-    makeSignalTree' myName parentName (ATGetter (getter, _)) =
-      [Tree.Node (myName, parentName, Just (toHistoryGetter (toDoubleGetter getter))) []]
-    toDoubleGetter :: Getter a -> (a -> Double)
-    toDoubleGetter (GetDouble f) = f
-    toDoubleGetter (GetFloat f) = realToFrac . f
-    toDoubleGetter (GetBool f) = fromIntegral . fromEnum . f
-    toDoubleGetter (GetInt f) = fromIntegral . f
-    toDoubleGetter GetSorry = const 0
+    makeSignalTree' myName parentName (Field field) =
+      [Tree.Node (myName, parentName, Just (toHistoryGetter (toDoubleGetter field))) []]
+
+    toDoubleGetter :: Field a -> (a -> Double)
+    toDoubleGetter (FieldDouble f) = (^. f)
+    toDoubleGetter (FieldFloat f) = realToFrac . (^. f)
+    toDoubleGetter (FieldBool f) = fromIntegral . fromEnum . (^. f)
+    toDoubleGetter (FieldInt f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldString _) = const 0
+    toDoubleGetter FieldSorry = const 0
 
     toHistoryGetter :: (a -> Double) -> History a -> [[(Double, Double)]]
     toHistoryGetter = case axisType of
@@ -196,6 +194,10 @@ historySignalTree x axisType = case accessors x of
           (_, k0', _) S.:< _ -> realToFrac k0'
           S.EmptyL -> 0
 
+-- History channel which automatically generates the signal tree for you
+-- based on the Lookup instance. You have to recompile the plotter if
+-- the types change.
+-- This is the internal part which should be wrapped by addHistoryChannel.
 newHistoryChannel ::
   forall a
   . Lookup a
@@ -234,23 +236,15 @@ newHistoryChannel name xaxisType = do
 
           when reset $ Gtk.listStoreSetValue msgStore 0 (History (S.singleton val))
 
-  let -- todo: cache this so i don't have to keep building an accessor tree to compare
-      sst :: History a -> History a -> Bool
-      sst (History x) (History y) = case (S.viewr x, S.viewr y) of
-        (_ S.:> (x',_,_), _ S.:> (y',_,_)) -> sameHistorySignalTree xaxisType x' y'
-        _ -> error "sameSignalTree got an empty history :("
-
-      tst :: History a -> [Tree ( String
+  let tst :: History a -> [Tree ( String
                                 , String
                                 , Maybe (History a -> [[(Double, Double)]])
                                 )]
-      tst (History x) = case (S.viewr x) of
-        (_ S.:> (x',_,_)) -> historySignalTree x' xaxisType
-        S.EmptyR -> error "toSignalTree got an empty history"
+      tst = const (historySignalTree xaxisType)
 
   let retChan = Channel { chanName = name
                         , chanMsgStore = msgStore
-                        , chanSameSignalTree = sst
+                        , chanSameSignalTree = \_ _ -> True
                         , chanToSignalTree = tst
                         , chanMaxHistory = maxHist
                         }

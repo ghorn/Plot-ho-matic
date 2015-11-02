@@ -1,6 +1,8 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+-- | This is an experimental and unstable interface for
+-- generating a GUI for getting/setting options.
 module SetHo
        ( runSetter
          -- * re-exported for convenience

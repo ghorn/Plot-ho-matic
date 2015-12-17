@@ -100,7 +100,7 @@ addHistoryChannel name xaxisType action = do
 addChannel ::
   String -- ^ channel name
   -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
-  -> (a -> [Tree (String, String, Maybe (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
+  -> (a -> [Tree ([String], String, Maybe (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
   -> ((a -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
   -> Plotter ()
 addChannel name sameSignalTree toSignalTree action = do
@@ -115,7 +115,7 @@ newChannel ::
   forall a
   . String
   -> (a -> a -> Bool)
-  -> (a -> [Tree (String, String, Maybe (a -> [[(Double, Double)]]))])
+  -> (a -> [Tree ([String], String, Maybe (a -> [[(Double, Double)]]))])
   -> IO (Channel a, a -> IO ())
 newChannel name sameSignalTree toSignalTree = do
   msgStore <- Gtk.listStoreNew []
@@ -141,8 +141,7 @@ newChannel name sameSignalTree toSignalTree = do
 
 
 data History a = History (S.Seq (a, Int, NominalDiffTime))
-
-type SignalTree a = Tree.Forest (String, String, Maybe (History a -> [[(Double, Double)]]))
+type HistorySignalTree a = Tree.Forest ([String], String, Maybe (History a -> [[(Double, Double)]]))
 
 data XAxisType =
   XAxisTime -- ^ time since the first message
@@ -150,19 +149,19 @@ data XAxisType =
   | XAxisCount -- ^ message index
   | XAxisCount0 -- ^ message index, normalized to 0 (to reduce plot jitter)
 
-historySignalTree :: forall a . Lookup a => XAxisType -> SignalTree a
+historySignalTree :: forall a . Lookup a => XAxisType -> HistorySignalTree a
 historySignalTree axisType = case accessors of
   (Field _) -> error "historySignalTree: got a Field right away"
-  d -> Tree.subForest $ head $ makeSignalTree' "" "" d
+  d -> Tree.subForest $ head $ makeSignalTree' [] "" d
   where
-    makeSignalTree' :: String -> String -> AccessorTree a -> SignalTree a
-    makeSignalTree' myName parentName (Data (pn,_) children) =
+    makeSignalTree' :: [String] -> String -> AccessorTree a -> HistorySignalTree a
+    makeSignalTree' myFieldName parentTypeName (Data (ptn,_) children) =
       [Tree.Node
-       (myName, parentName, Nothing)
-       (concatMap (\(getterName,child) -> makeSignalTree' getterName pn child) children)
+       (reverse myFieldName, parentTypeName, Nothing)
+       (concatMap (\(getterName, child) -> makeSignalTree' (getterName:myFieldName) ptn child) children)
       ]
-    makeSignalTree' myName parentName (Field field) =
-      [Tree.Node (myName, parentName, Just (toHistoryGetter (toDoubleGetter field))) []]
+    makeSignalTree' myFieldName parentTypeName (Field field) =
+      [Tree.Node (reverse myFieldName, parentTypeName, Just (toHistoryGetter (toDoubleGetter field))) []]
 
     toDoubleGetter :: Field a -> (a -> Double)
     toDoubleGetter (FieldDouble f) = (^. f)
@@ -230,13 +229,12 @@ newHistoryChannel name xaxisType = do
             then Gtk.listStorePrepend msgStore (History (S.singleton val))
             else do History vals0 <- Gtk.listStoreGetValue msgStore 0
                     maxHistory <- IORef.readIORef maxHist
-                    let undropped = vals0 S.|> val
-                        dropped = S.drop (S.length undropped - maxHistory) undropped
+                    let dropped = S.drop (1 + S.length vals0 - maxHistory) (vals0 S.|> val)
                     Gtk.listStoreSetValue msgStore 0 (History dropped)
 
           when reset $ Gtk.listStoreSetValue msgStore 0 (History (S.singleton val))
 
-  let tst :: History a -> [Tree ( String
+  let tst :: History a -> [Tree ( [String]
                                 , String
                                 , Maybe (History a -> [[(Double, Double)]])
                                 )]

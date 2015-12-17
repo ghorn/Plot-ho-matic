@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module PlotHo.PlotChart
        ( AxisScaling(..)
@@ -42,10 +43,12 @@ chartGtkUpdateCanvas chart canvas = do
           Gtk.drawWindowEndPaint win
           Gtk.threadsLeave
 
-displayChart :: (Chart.PlotValue a, Show a, RealFloat a) =>
-                (AxisScaling, AxisScaling) -> (Maybe (a,a),Maybe (a,a)) ->
-                [(String, [[(a,a)]])] -> Chart.Renderable ()
-displayChart (xScaling,yScaling) (xRange,yRange) namePcs = Chart.toRenderable layout
+displayChart :: forall a
+                . (Chart.PlotValue a, Show a, RealFloat a)
+                => (AxisScaling, AxisScaling) -> (Maybe (a,a), Maybe (a,a))
+                -> Maybe String
+                -> [(String, [[(a,a)]])] -> Chart.Renderable ()
+displayChart (xScaling, yScaling) (xRange, yRange) mtitle namePcs = Chart.toRenderable layout
   where
     drawOne (name,pc) col
       = Chart.plot_lines_values .~ pc
@@ -53,6 +56,7 @@ displayChart (xScaling,yScaling) (xRange,yRange) namePcs = Chart.toRenderable la
 --        $ Chart.plot_points_style ~. Chart.filledCircles 2 red
         $ Chart.plot_lines_title .~ name
         $ def
+    allLines :: [Chart.PlotLines a a]
     allLines = zipWith drawOne namePcs Chart.defaultColorSeq
 
     xscaleFun = case xScaling of
@@ -67,8 +71,11 @@ displayChart (xScaling,yScaling) (xRange,yRange) namePcs = Chart.toRenderable la
         Nothing -> id
         Just range -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
 
+    title = case mtitle of
+      Nothing -> id
+      Just t -> Chart.layout_title .~ t
     layout = Chart.layout_plots .~ map Chart.toPlot allLines
---             $ Chart.layout_title .~ "Wooo, Party Graph!"
+             $ title
              $ Chart.layout_x_axis . Chart.laxis_title .~ "time [s]"
              $ xscaleFun
              $ yscaleFun

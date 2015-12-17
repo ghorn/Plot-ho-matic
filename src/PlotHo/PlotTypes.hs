@@ -19,7 +19,7 @@ data MarkedState =
 
 data ListViewInfo a =
   ListViewInfo
-  { lviName :: String
+  { lviName :: [String]
   , lviType :: String
   , lviGetter :: Maybe (a -> [[(Double,Double)]])
   , lviMarked :: MarkedState
@@ -38,13 +38,14 @@ data GraphInfo a =
             , giXRange :: Maybe (Double,Double)
             , giYRange :: Maybe (Double,Double)
             , giGetters :: [(String, a -> [[(Double,Double)]])]
+            , giTitle :: Maybe String
             }
 
 data Channel a =
   Channel { chanName :: String
           , chanMsgStore :: Gtk.ListStore a
           , chanSameSignalTree :: a -> a -> Bool
-          , chanToSignalTree :: a -> [Tree ( String
+          , chanToSignalTree :: a -> [Tree ( [String]
                                            , String
                                            , Maybe (a -> [[(Double, Double)]])
                                            )]

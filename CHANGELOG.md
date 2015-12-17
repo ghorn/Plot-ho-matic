@@ -39,3 +39,7 @@ remove Generic requirement for some Lookup instances
 0.5.0.5
 ---
 * Compatability with generic-accessors 0.2
+
+0.7.0.0
+---
+* Better legend and title.

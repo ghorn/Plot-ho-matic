@@ -7,6 +7,8 @@ module PlotHo
        , runPlotter
        , XAxisType(..)
        , addHistoryChannel
+       , Meta
+       , addHistoryChannel'
        , addChannel
          -- * re-exported for convenience
        , Lookup
@@ -24,6 +26,8 @@ import qualified Data.IORef as IORef
 import Data.Time ( NominalDiffTime, getCurrentTime, diffUTCTime )
 import Data.Tree ( Tree )
 import qualified Data.Tree as Tree
+import Data.Vector ( Vector )
+import qualified Data.Vector as V
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
@@ -78,7 +82,7 @@ data ChannelStuff =
 -- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
 -- You will have to recompile the plotter if the types change.
 -- If you don't want to do this, use the more generic "addChannel" interface
--- and use a type like a Tree to represent your data.
+-- and use a type like a Tree to represent your data, or use the "addHistoryChannel'" function.
 addHistoryChannel ::
   Lookup a
   => String -- ^ channel name
@@ -87,6 +91,18 @@ addHistoryChannel ::
   -> Plotter ()
 addHistoryChannel name xaxisType action = do
   (chan, newMessage) <- liftIO $ newHistoryChannel name xaxisType
+  workerTid <- liftIO $ CC.forkIO (action newMessage)
+  tell ChannelStuff { csKillThreads = CC.killThread workerTid
+                    , csMkChanEntry = newChannelWidget chan
+                    }
+
+-- | Dynamic time-series channel which can change its signal tree without recompiling the plotter.
+addHistoryChannel' ::
+  String -- ^ channel name
+  -> ((Double -> Vector Double -> Maybe Meta -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
+  -> Plotter ()
+addHistoryChannel' name action = do
+  (chan, newMessage) <- liftIO $ newHistoryChannel' name
   workerTid <- liftIO $ CC.forkIO (action newMessage)
   tell ChannelStuff { csKillThreads = CC.killThread workerTid
                     , csMkChanEntry = newChannelWidget chan
@@ -244,6 +260,69 @@ newHistoryChannel name xaxisType = do
                         , chanMsgStore = msgStore
                         , chanSameSignalTree = \_ _ -> True
                         , chanToSignalTree = tst
+                        , chanMaxHistory = maxHist
+                        }
+
+  return (retChan, newMessage)
+
+type Meta = [Tree ([String], String, Maybe Int)]
+data History' = History' Bool (S.Seq (Double, Vector Double)) Meta
+
+-- History channel which does NOT automatically generates the signal tree for you.
+-- This is the internal part which should be wrapped by addHistoryChannel'.
+newHistoryChannel' ::
+  String -> IO (Channel History', Double -> Vector Double -> Maybe Meta -> IO ())
+newHistoryChannel' name = do
+  maxHist <- IORef.newIORef 200
+
+  msgStore <- Gtk.listStoreNew []
+
+  let newMessage :: Double -> Vector Double -> Maybe Meta -> IO ()
+      newMessage nextTime nextVal maybeMeta = do
+        Gtk.postGUIAsync $ do
+          let val = (nextTime, nextVal)
+          size <- Gtk.listStoreGetSize msgStore
+          if size == 0
+            then case maybeMeta of
+                   Just meta -> Gtk.listStorePrepend msgStore (History' True (S.singleton val) meta)
+                   Nothing -> error "history channel got size 0 message store but no reset"
+            else do History' _ vals0 meta <- Gtk.listStoreGetValue msgStore 0
+                    maxHistory <- IORef.readIORef maxHist
+                    let dropped = S.drop (1 + S.length vals0 - maxHistory) (vals0 S.|> val)
+                    Gtk.listStoreSetValue msgStore 0 (History' False dropped meta)
+
+          -- reset on new meta
+          case maybeMeta of
+            Nothing -> return () -- no reset
+            Just meta -> Gtk.listStoreSetValue msgStore 0 (History' True (S.singleton val) meta)
+
+  let toSignalTree :: History'
+                      -> [Tree ( [String]
+                               , String
+                               , Maybe (History' -> [[(Double, Double)]])
+                               )]
+      toSignalTree (History' _ _ meta) = map (fmap f) meta
+        where
+          f :: ([String], String, Maybe Int)
+               -> ([String], String, Maybe (History' -> [[(Double, Double)]]))
+          f (n0, n1, Nothing) = (n0, n1, Nothing)
+          f (n0, n1, Just k) = (n0, n1, Just g)
+            where
+              g :: History' -> [[(Double, Double)]]
+              g (History' _ vals _) = [map toVal (F.toList vals)]
+                where
+                  toVal (t, x) = (t, x V.! k)
+
+      sameSignalTree :: History' -> History' -> Bool
+      -- assume the signal trees are the same if it's not a reset
+      sameSignalTree (History' _ _ _) (History' False _ _) = True
+      -- if it's a reset, then compare the signal trees
+      sameSignalTree (History' _ _ old) (History' True _ new) = old == new
+
+  let retChan = Channel { chanName = name
+                        , chanMsgStore = msgStore
+                        , chanSameSignalTree = sameSignalTree
+                        , chanToSignalTree = toSignalTree
                         , chanMaxHistory = maxHist
                         }
 

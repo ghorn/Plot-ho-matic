@@ -1,5 +1,5 @@
 name:                Plot-ho-matic
-version:             0.7.0.0
+version:             0.7.0.1
 synopsis:            Real-time line plotter for generic data
 license:             BSD3
 license-file:        LICENSE

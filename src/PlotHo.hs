@@ -379,15 +379,29 @@ runPlotter plotterMonad = do
   _ <- Gtk.onClicked buttonDoNothing $
        putStrLn "seriously, it does nothing"
 
-  -- vbox to hold buttons and list of channel
+  -- box to hold list of channels
+  channelBox <- Gtk.vBoxNew False 4
+  Gtk.set channelBox $
+    concatMap (\x -> [ Gtk.containerChild := x
+                     , Gtk.boxChildPacking x := Gtk.PackNatural
+                     ]) chanWidgets
+
+  -- scroll to hold channel box
+  scroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.scrolledWindowAddWithViewport scroll channelBox
+  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
+                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+                 ]
+
+  -- vbox to hold everything
   vbox <- Gtk.vBoxNew False 4
   Gtk.set vbox $
     [ Gtk.containerChild := statsLabel
     , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
     , Gtk.containerChild := buttonDoNothing
-    ] ++ concatMap (\x -> [ Gtk.containerChild := x
-                          , Gtk.boxChildPacking x := Gtk.PackNatural
-                          ]) chanWidgets
+    , Gtk.boxChildPacking buttonDoNothing := Gtk.PackNatural
+    , Gtk.containerChild := scroll
+    ]
 
   -- add widget to window and show
   _ <- Gtk.set win [ Gtk.containerChild := vbox ]

@@ -43,3 +43,7 @@ remove Generic requirement for some Lookup instances
 0.7.0.0
 ---
 * Better legend and title.
+
+0.7.0.1
+---
+* Make the list of channels a scrollable thing.

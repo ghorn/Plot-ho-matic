@@ -116,7 +116,7 @@ addHistoryChannel' name action = do
 addChannel ::
   String -- ^ channel name
   -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
-  -> (a -> [Tree ([String], String, Maybe (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
+  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
   -> ((a -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
   -> Plotter ()
 addChannel name sameSignalTree toSignalTree action = do
@@ -131,7 +131,7 @@ newChannel ::
   forall a
   . String
   -> (a -> a -> Bool)
-  -> (a -> [Tree ([String], String, Maybe (a -> [[(Double, Double)]]))])
+  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> IO (Channel a, a -> IO ())
 newChannel name sameSignalTree toSignalTree = do
   msgStore <- Gtk.listStoreNew []
@@ -157,7 +157,7 @@ newChannel name sameSignalTree toSignalTree = do
 
 
 data History a = History (S.Seq (a, Int, NominalDiffTime))
-type HistorySignalTree a = Tree.Forest ([String], String, Maybe (History a -> [[(Double, Double)]]))
+type HistorySignalTree a = Tree.Forest ([String], Either String (History a -> [[(Double, Double)]]))
 
 data XAxisType =
   XAxisTime -- ^ time since the first message
@@ -168,16 +168,16 @@ data XAxisType =
 historySignalTree :: forall a . Lookup a => XAxisType -> HistorySignalTree a
 historySignalTree axisType = case accessors of
   (Field _) -> error "historySignalTree: got a Field right away"
-  d -> Tree.subForest $ head $ makeSignalTree' [] "" d
+  d -> Tree.subForest $ head $ makeSignalTree' [] d
   where
-    makeSignalTree' :: [String] -> String -> AccessorTree a -> HistorySignalTree a
-    makeSignalTree' myFieldName parentTypeName (Data (ptn,_) children) =
+    makeSignalTree' :: [String] -> AccessorTree a -> HistorySignalTree a
+    makeSignalTree' myFieldName (Data (ptn,_) children) =
       [Tree.Node
-       (reverse myFieldName, parentTypeName, Nothing)
-       (concatMap (\(getterName, child) -> makeSignalTree' (getterName:myFieldName) ptn child) children)
+       (reverse myFieldName, Left ptn)
+       (concatMap (\(getterName, child) -> makeSignalTree' (getterName:myFieldName) child) children)
       ]
-    makeSignalTree' myFieldName parentTypeName (Field field) =
-      [Tree.Node (reverse myFieldName, parentTypeName, Just (toHistoryGetter (toDoubleGetter field))) []]
+    makeSignalTree' myFieldName (Field field) =
+      [Tree.Node (reverse myFieldName, Right (toHistoryGetter (toDoubleGetter field))) []]
 
     toDoubleGetter :: Field a -> (a -> Double)
     toDoubleGetter (FieldDouble f) = (^. f)
@@ -251,8 +251,7 @@ newHistoryChannel name xaxisType = do
           when reset $ Gtk.listStoreSetValue msgStore 0 (History (S.singleton val))
 
   let tst :: History a -> [Tree ( [String]
-                                , String
-                                , Maybe (History a -> [[(Double, Double)]])
+                                , Either String (History a -> [[(Double, Double)]])
                                 )]
       tst = const (historySignalTree xaxisType)
 
@@ -265,7 +264,7 @@ newHistoryChannel name xaxisType = do
 
   return (retChan, newMessage)
 
-type Meta = [Tree ([String], String, Maybe Int)]
+type Meta = [Tree ([String], Either String Int)]
 data History' = History' Bool (S.Seq (Double, Vector Double)) Meta
 
 -- History channel which does NOT automatically generates the signal tree for you.
@@ -302,15 +301,14 @@ newHistoryChannel' name = do
 
   let toSignalTree :: History'
                       -> [Tree ( [String]
-                               , String
-                               , Maybe (History' -> [[(Double, Double)]])
+                               , Either String (History' -> [[(Double, Double)]])
                                )]
       toSignalTree (History' _ _ meta) = map (fmap f) meta
         where
-          f :: ([String], String, Maybe Int)
-               -> ([String], String, Maybe (History' -> [[(Double, Double)]]))
-          f (n0, n1, Nothing) = (n0, n1, Nothing)
-          f (n0, n1, Just k) = (n0, n1, Just g)
+          f :: ([String], Either String Int)
+               -> ([String], Either String (History' -> [[(Double, Double)]]))
+          f (n0, Left n1) = (n0, Left n1)
+          f (n0, Right k) = (n0, Right g)
             where
               g :: History' -> [[(Double, Double)]]
               g (History' _ vals _) = [map toVal (F.toList vals)]

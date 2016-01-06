@@ -7,10 +7,11 @@ module PlotHo.GraphWidget
 
 import qualified Control.Concurrent as CC
 import Control.Monad ( void, when, unless )
+import Data.Either ( isRight )
 import qualified Data.IORef as IORef
 import Data.List ( intercalate )
 import qualified Data.Map as M
-import Data.Maybe ( isNothing, isJust, fromJust )
+import Data.Maybe ( isNothing, fromJust )
 import qualified Data.Tree as Tree
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
@@ -28,7 +29,7 @@ newGraph ::
   . (IO () -> IO ())
   -> String
   -> (a -> a -> Bool)
-  -> (a -> [Tree.Tree ([String], String, Maybe (a -> [[(Double, Double)]]))])
+  -> (a -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> Gtk.ListStore a -> IO Gtk.Window
 newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   win <- Gtk.windowNew
@@ -156,7 +157,7 @@ newSignalSelectorArea ::
   forall a
   . (IO () -> IO ())
   -> (a -> a -> Bool)
-  -> (a -> [Tree.Tree ([String], String, Maybe (a -> [[(Double, Double)]]))])
+  -> (a -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> CC.MVar (GraphInfo a)
   -> Gtk.ListStore a
   -> IO () -> IO Gtk.ScrolledWindow
@@ -179,19 +180,19 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
   Gtk.cellLayoutPackStart col1 renderer1 True
   Gtk.cellLayoutPackStart col2 renderer2 True
 
-  let showName :: Maybe (a -> [[(Double, Double)]]) -> [String] -> String -> String
+  let showName :: Either String (a -> [[(Double, Double)]]) -> [String] -> String
       -- show a getter name
-      showName (Just _) (name:_) _ = name
-      showName (Just _) [] _ = error "showName on field got an empty list"
+      showName (Right _) (name:_) = name
+      showName (Right _) [] = error "showName on field got an empty list"
       -- show a parent without type info
-      showName Nothing (name:_) "" = name
+      showName (Left "") (name:_) = name
       -- show a parent with type info
-      showName Nothing (name:_) typeName = name ++ " (" ++ typeName ++ ")"
-      showName Nothing [] _ = error "showName on parent got an empty list"
+      showName (Left typeName) (name:_) = name ++ " (" ++ typeName ++ ")"
+      showName (Left _) [] = error "showName on parent got an empty list"
 
   Gtk.cellLayoutSetAttributes col1 renderer1 treeStore $
-    \(ListViewInfo {lviName = name, lviType = typeName, lviGetter = getter}) ->
-      [ Gtk.cellText := showName getter (reverse name) typeName
+    \(ListViewInfo {lviName = name, lviTypeOrGetter = typeOrGetter}) ->
+      [ Gtk.cellText := showName typeOrGetter (reverse name)
       ]
   Gtk.cellLayoutSetAttributes col2 renderer2 treeStore $ \lvi -> case lviMarked lvi of
     On -> [ Gtk.cellToggleInconsistent := False
@@ -216,11 +217,13 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
               case tree' of Nothing -> return []
                             Just tree -> fmap (tree:) (getTrees (k+1))
         theTrees <- getTrees 0
-        let newGetters0 :: [([String], a -> [[(Double, Double)]])]
-            newGetters0 = [ (lviName lvi, fromJust $ lviGetter lvi)
+        let fromRight (Right r) = r
+            fromRight (Left _) =  error "PlotHo GraphWidget: fromRight got Left, this should be impossible"
+            newGetters0 :: [([String], a -> [[(Double, Double)]])]
+            newGetters0 = [ (lviName lvi, fromRight $ lviTypeOrGetter lvi)
                           | lvi <- concatMap Tree.flatten theTrees
                           , lviMarked lvi == On
-                          , isJust (lviGetter lvi)
+                          , isRight (lviTypeOrGetter lvi)
                           ]
         let newGetters :: [(String, a -> [[(Double, Double)]])]
             newTitle :: Maybe String
@@ -282,17 +285,17 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
     -- toggle the check mark
     val <- Gtk.treeStoreGetValue treeStore treePath
     case val of
-      (ListViewInfo _ _ Nothing Off) ->
+      (ListViewInfo _ (Left _) Off) ->
         changeSelfAndChildren (\lvi -> lvi {lviMarked = On}) treePath
-      (ListViewInfo _ _ Nothing On) ->
+      (ListViewInfo _ (Left _) On) ->
         changeSelfAndChildren (\lvi -> lvi {lviMarked = Off}) treePath
-      (ListViewInfo _ _ Nothing Inconsistent) ->
+      (ListViewInfo _ (Left _) Inconsistent) ->
         changeSelfAndChildren (\lvi -> lvi {lviMarked = On}) treePath
-      lvi@(ListViewInfo _ _ (Just _) On) ->
+      lvi@(ListViewInfo _ (Right _) On) ->
         Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = Off}
-      lvi@(ListViewInfo _ _ (Just _) Off) ->
+      lvi@(ListViewInfo _ (Right _) Off) ->
         Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = On}
-      (ListViewInfo _ _ (Just _) Inconsistent) -> error "cell getter can't be inconsistent"
+      (ListViewInfo _ (Right _) Inconsistent) -> error "cell getter can't be inconsistent"
 
     fixInconsistent treePath
     updateGraphInfo
@@ -306,7 +309,7 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
         mapM treeFromJust mnodes
 
   -- rebuild the signal tree
-  let rebuildSignalTree :: [Tree.Tree ([String], String, Maybe (a -> [[(Double, Double)]]))]
+  let rebuildSignalTree :: [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))]
                            -> IO ()
       rebuildSignalTree meta = do
         putStrLn "rebuilding signal tree"
@@ -316,19 +319,28 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
 
             merge :: forall b
                      . [Tree.Tree (ListViewInfo b)]
-                     -> [Tree.Tree ([String], String, Maybe (a -> [[(Double, Double)]]))]
+                     -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))]
                      -> [Tree.Tree (ListViewInfo a)]
             merge old new = map convert new
               where
-                oldMap :: M.Map ([String], String) (ListViewInfo b, [Tree.Tree (ListViewInfo b)])
-                oldMap = M.fromList $
-                         map (\(Tree.Node lvi lvis) -> ((lviName lvi, lviType lvi), (lvi, lvis))) old
+                oldMap :: M.Map ([String], Maybe String) (ListViewInfo b, [Tree.Tree (ListViewInfo b)])
+                oldMap = M.fromList $ map f old
+                  where
+                    f (Tree.Node lvi lvis) = ((lviName lvi, maybeType), (lvi, lvis))
+                      where
+                        maybeType = case lviTypeOrGetter lvi of
+                          Left typ -> Just typ
+                          Right _ -> Nothing
 
-                convert :: Tree.Tree ([String], String, Maybe (a -> [[(Double, Double)]]))
+                convert :: Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))
                            -> Tree.Tree (ListViewInfo a)
-                convert (Tree.Node (name, typ, getter) others) = case M.lookup (name, typ) oldMap of
-                  Nothing -> Tree.Node (ListViewInfo name typ getter Off) (merge [] others)
-                  Just (lvi, oldOthers) -> Tree.Node (ListViewInfo name typ getter (lviMarked lvi)) (merge oldOthers others)
+                convert (Tree.Node (name, tog) others) = case M.lookup (name, maybeType) oldMap of
+                  Nothing -> Tree.Node (ListViewInfo name tog Off) (merge [] others)
+                  Just (lvi, oldOthers) -> Tree.Node (ListViewInfo name tog (lviMarked lvi)) (merge oldOthers others)
+                  where
+                    maybeType = case tog of
+                      Left r -> Just r
+                      Right _ -> Nothing
 
             newTrees = merge oldTrees meta
 

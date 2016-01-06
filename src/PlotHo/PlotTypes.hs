@@ -20,13 +20,13 @@ data MarkedState =
 data ListViewInfo a =
   ListViewInfo
   { lviName :: [String]
-  , lviType :: String
-  , lviGetter :: Maybe (a -> [[(Double,Double)]])
+  , lviTypeOrGetter :: Either String (a -> [[(Double,Double)]])
   , lviMarked :: MarkedState
   }
 
 instance Show (ListViewInfo a) where
-  show (ListViewInfo n t _ m) = "ListViewInfo " ++ show (n,t,m)
+  show (ListViewInfo n (Left t) m)  = "ListViewInfo " ++ show (n,t,m)
+  show (ListViewInfo n (Right _) m) = "ListViewInfo " ++ show (n,m)
 
 data AxisScaling = LogScaling
                  | LinearScaling
@@ -46,8 +46,7 @@ data Channel a =
           , chanMsgStore :: Gtk.ListStore a
           , chanSameSignalTree :: a -> a -> Bool
           , chanToSignalTree :: a -> [Tree ( [String]
-                                           , String
-                                           , Maybe (a -> [[(Double, Double)]])
+                                           , Either String (a -> [[(Double, Double)]])
                                            )]
           , chanMaxHistory :: IORef Int
           }

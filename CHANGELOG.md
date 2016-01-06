@@ -47,3 +47,8 @@ remove Generic requirement for some Lookup instances
 0.7.0.1
 ---
 * Make the list of channels a scrollable thing.
+
+0.8.0.0
+---
+* Switch from Tree ([String], String, Maybe (a -> [[(Double, Double)]]))
+         to   Tree ([String], Either String (a -> [[(Double, Double)]]))

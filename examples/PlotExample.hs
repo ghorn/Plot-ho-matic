@@ -9,39 +9,41 @@ import GHC.Generics ( Generic )
 
 import PlotHo ( Lookup, XAxisType(..), runPlotter, addHistoryChannel )
 
-data Xyz a = MkXyz { x :: Double
+data Foo a = MkFoo { x :: Double
                    , y :: Double
                    , z :: Double
-                   , zz :: a
+                   , w :: a
                    } deriving Generic
-data Axyz = MkAxyz { lol :: Double
+data Bar = MkBar { lol :: Double
 --                   , xyzList :: S.Seq Xyz
-                   , xyz1 :: Xyz (Xyz (Xyz Double))
-                   , xyz2 :: Xyz Double
-                   } deriving Generic
-instance Lookup a => Lookup (Xyz a)
-instance Lookup Axyz
+                 , foos :: Foo (Foo (Foo Double))
+                 , foo :: Foo Double
+                 } deriving Generic
+instance Lookup a => Lookup (Foo a)
+instance Lookup Bar
 
-axyz0 :: Axyz
-axyz0 = MkAxyz
-        7
---        (S.fromList [MkXyz 1 2 3])
-        (MkXyz 1 2 3 (MkXyz 4 5 6 (MkXyz 7 8 9 10)))
-        (MkXyz 1 2 3 4)
+bar0 :: Bar
+bar0 =
+  MkBar
+  7
+--  (S.fromList [MkFoo 1 2 3])
+  (MkFoo 1 2 3 (MkFoo 4 5 6 (MkFoo 7 8 9 10)))
+  (MkFoo 1 2 3 4)
 
-xyz0 :: Xyz Double
-xyz0 = MkXyz 1 2 3 0.1
+foo0 :: Foo Double
+foo0 = MkFoo 1 2 3 0.1
 
-incrementAxyz :: Axyz -> Axyz
-incrementAxyz (MkAxyz a _ _) = MkAxyz
-                             (a+0.2)
-                             (xyz' (xyz' (xyz' (sin (3*a)))))
-                             (xyz' (sin (2*a)))
+incrementBar :: Bar -> Bar
+incrementBar (MkBar a _ _) =
+  MkBar
+  (a+0.2)
+  (foo' (foo' (foo' (sin (3*a)))))
+  (foo' (sin (2*a)))
   where
-    xyz' w = MkXyz (sin a) (cos a) (sin a * cos a) w
+    foo' t = MkFoo (sin a) (cos a) (sin a * cos a) t
 
-incrementXyz :: Xyz a -> Xyz a
-incrementXyz (MkXyz a _ _ b) = MkXyz (a+0.3) (2 * sin a) (3 * cos a) b
+incrementFoo :: Foo a -> Foo a
+incrementFoo (MkFoo a _ _ b) = MkFoo (a+0.3) (2 * sin a) (3 * cos a) b
 
 -- a random function to write a bunch of data to a chan
 channelWriter :: Int -> Int -> (a -> a) -> a -> (a -> Bool -> IO ()) -> IO ()
@@ -56,7 +58,7 @@ main = do
 --  ekgTid <- fmap EKG.serverThreadId $ EKG.forkServer "localhost" 8000
 
   runPlotter $ do
-    addHistoryChannel "posPlos"  XAxisTime   $ channelWriter 0 50000 incrementAxyz axyz0
-    addHistoryChannel "pos"      XAxisCount  $ channelWriter 0 60000 incrementXyz xyz0
-    addHistoryChannel "posPlos"  XAxisTime0  $ channelWriter 0 50000 incrementAxyz axyz0
-    addHistoryChannel "pos"      XAxisCount0 $ channelWriter 0 60000 incrementXyz xyz0
+    addHistoryChannel "Foo (XAxisTime)"   XAxisTime   $ channelWriter 0 50000 incrementFoo foo0
+    addHistoryChannel "Bar (XAxisCount)"  XAxisCount  $ channelWriter 0 60000 incrementBar bar0
+    addHistoryChannel "Foo (XAxisTime0)"  XAxisTime0  $ channelWriter 0 50000 incrementFoo foo0
+    addHistoryChannel "Bar (XAxisCount0)" XAxisCount0 $ channelWriter 0 60000 incrementBar bar0

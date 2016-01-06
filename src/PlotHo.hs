@@ -285,7 +285,11 @@ newHistoryChannel' name = do
           if size == 0
             then case maybeMeta of
                    Just meta -> Gtk.listStorePrepend msgStore (History' True (S.singleton val) meta)
-                   Nothing -> error "history channel got size 0 message store but no reset"
+                   Nothing -> error $ unlines
+                              [ "error: History channel has size 0 message store but no reset."
+                              , "This means that the first message the plotter saw didn't contain the meta-data."
+                              , "This was probably caused by starting the plotter AFTER sending the first telemetry message."
+                              ]
             else do History' _ vals0 meta <- Gtk.listStoreGetValue msgStore 0
                     maxHistory <- IORef.readIORef maxHist
                     let dropped = S.drop (1 + S.length vals0 - maxHistory) (vals0 S.|> val)

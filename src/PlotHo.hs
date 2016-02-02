@@ -167,22 +167,25 @@ data XAxisType =
 
 historySignalTree :: forall a . Lookup a => XAxisType -> HistorySignalTree a
 historySignalTree axisType = case accessors of
-  (Field _) -> error "historySignalTree: got a Field right away"
-  d -> Tree.subForest $ head $ makeSignalTree' [] d
+  Left _ -> error "historySignalTree: got a Field right away"
+  acc -> Tree.subForest $ head $ makeSignalTree' [] acc
   where
     makeSignalTree' :: [String] -> AccessorTree a -> HistorySignalTree a
-    makeSignalTree' myFieldName (Data (ptn,_) children) =
+    makeSignalTree' myFieldName (Right (GAData _ (GAConstructor cname children))) =
       [Tree.Node
-       (reverse myFieldName, Left ptn)
-       (concatMap (\(getterName, child) -> makeSignalTree' (getterName:myFieldName) child) children)
+       (reverse myFieldName, Left cname)
+       (concatMap (\(getterName, child) -> makeSignalTree' (fromMName getterName:myFieldName) child) children)
       ]
-    makeSignalTree' myFieldName (Field field) =
+    makeSignalTree' myFieldName (Right (GAData _ (GASum (GASimpleEnum _ intLens)))) =
+      [Tree.Node (reverse myFieldName, Right (toHistoryGetter (fromIntegral . (^. intLens)))) []]
+    makeSignalTree' myFieldName (Left field) =
       [Tree.Node (reverse myFieldName, Right (toHistoryGetter (toDoubleGetter field))) []]
+    fromMName (Just x) = x
+    fromMName Nothing = "()"
 
-    toDoubleGetter :: Field a -> (a -> Double)
+    toDoubleGetter :: GAField a -> (a -> Double)
     toDoubleGetter (FieldDouble f) = (^. f)
     toDoubleGetter (FieldFloat f) = realToFrac . (^. f)
-    toDoubleGetter (FieldBool f) = fromIntegral . fromEnum . (^. f)
     toDoubleGetter (FieldInt f) = fromIntegral . (^. f)
     toDoubleGetter (FieldString _) = const 0
     toDoubleGetter FieldSorry = const 0

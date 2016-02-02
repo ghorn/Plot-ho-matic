@@ -2,76 +2,110 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module SetHo.LookupTree
-       ( GraphInfo(..)
-       , ListViewInfo(..)
+       ( ListViewElement(..)
        , newLookupTreeview
-       , makeOptionsWidget
        ) where
 
-import qualified Control.Concurrent as CC
-import Data.List ( foldl' )
-import qualified Data.IORef as IORef
-import qualified Data.Tree as Tree
-import Control.Lens ( (.~), (^.) )
+import Accessors.Dynamic
+       ( DTree, DData(..), DConstructor(..), DSimpleEnum(..), DField(..)
+       , describeDField, sameDFieldType
+       )
+import Control.Monad ( void, when )
+import Data.Tree ( Tree(..) )
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
-import qualified Data.Text as T
 import Text.Printf ( printf )
 
-import Accessors ( Lookup, AccessorTree(..), Field(..), accessors, describeField )
+data FieldElem =
+  FieldElem
+  { feName :: Maybe String
+  , feUpstreamField :: DField
+  , feStagedField :: DField
+  } deriving Show
 
-data ListViewInfo a =
-  ListViewInfo
-  { lviName :: String
-  , lviType :: String
-  , lviField :: Maybe (Field a)
-  , lviMarked :: Bool
-  , lviStagedMutator :: a -> a
-  , lviUpstreamValue :: a
-  , lviShownValue :: String
-  }
+data ConstructorElem =
+  ConstructorElem
+  { ceName :: Maybe String
+  , ceDName :: String
+  , ceCName :: String
+  } deriving (Show, Eq)
 
-instance Show a => Show (ListViewInfo a) where
-  show (ListViewInfo n t _ _ mut val m) = "ListViewInfo " ++ show (n,t,m,mut val)
+data SumElem =
+  SumElem
+  { seName :: Maybe String
+  , seDName :: String
+  , seUpstreamSum :: DSimpleEnum
+  , seStagedSum :: DSimpleEnum
+  } deriving Show
 
--- what the graph should draw
-data GraphInfo a =
-  GraphInfo { giXScaling :: Bool
-            , giXRange :: Maybe (Double,Double)
-            , giValue :: a
-            }
+data ListViewElement =
+  LveField FieldElem
+  | LveConstructor ConstructorElem
+  | LveSum SumElem
+  deriving Show
 
-type SignalTree a = Tree.Forest (String, String, Maybe (Field a))
-
-toSignalTree :: forall a . Lookup a => SignalTree a
-toSignalTree = case (accessors :: AccessorTree a) of
-  (Field _) -> error "toSignalTree: got an accessor right away"
-  d -> Tree.subForest $ head $ makeSignalTree' "" "" d
+ddataToTree :: Maybe String -> Either DField DData -> Tree ListViewElement
+ddataToTree name (Left field) = Node (LveField fe) []
   where
-    makeSignalTree' :: String -> String -> AccessorTree a -> SignalTree a
-    makeSignalTree' myName parentName (Data (pn,_) children) =
-      [Tree.Node
-       (myName, parentName, Nothing)
-       (concatMap (\(getterName,child) -> makeSignalTree' getterName pn child) children)
-      ]
-    makeSignalTree' myName parentName (Field f) =
-      [Tree.Node (myName, parentName, Just f) []]
+    fe =
+      FieldElem
+      { feName = name
+      , feUpstreamField = field
+      , feStagedField = field
+      }
+ddataToTree name (Right (DData dname (DConstructor cname fields))) =
+  Node (LveConstructor ce) (map (uncurry ddataToTree) fields)
+  where
+    ce =
+      ConstructorElem
+      { ceName = name
+      , ceDName = dname
+      , ceCName = cname
+      }
+ddataToTree name (Right (DData dname (DSum s))) =
+  Node (LveSum se) []
+  where
+    se =
+      SumElem
+      { seName = name
+      , seDName = dname
+      , seUpstreamSum = s
+      , seStagedSum = s
+      }
 
+treeToStagedDData :: Tree ListViewElement -> Either DField DData
+treeToStagedDData (Node (LveField fe) []) = Left (feStagedField fe)
+treeToStagedDData (Node (LveField fe) _) =
+  error $ "treeToStagedDData: LveField " ++ show fe ++ " has children"
+treeToStagedDData (Node (LveConstructor ce) fields) =
+  Right (DData dname (DConstructor cname (map f fields)))
+  where
+    dname = ceDName ce
+    cname = ceCName ce
 
+    getName :: Tree ListViewElement -> Maybe String
+    getName (Node (LveSum se) _) = seName se
+    getName (Node (LveConstructor ce') _) = ceName ce'
+    getName (Node (LveField fe) _) = feName fe
+
+    f x = (getName x, treeToStagedDData x)
+treeToStagedDData (Node (LveSum se) []) =
+  Right (DData dname (DSum s))
+  where
+    dname = seDName se
+    s = seStagedSum se
+treeToStagedDData (Node (LveSum se) _) =
+  error $ "treeToStagedDData: LveSum " ++ show se ++ " has children"
 
 newLookupTreeview ::
-  forall a
-  . Lookup a
-  => a
-  -> Gtk.ListStore a
-  -> IO (Gtk.ScrolledWindow, IO a)
-newLookupTreeview initialValue msgStore = do
-  let signalTree = toSignalTree
-
-  treeStore <- Gtk.treeStoreNew []
-  treeview <- Gtk.treeViewNewWithModel treeStore
+  String
+  -> DTree
+  -> IO (Gtk.ScrolledWindow, IO DTree, DTree -> IO ())
+newLookupTreeview rootName initialValue = do
+  treeStore <- Gtk.treeStoreNew [] :: IO (Gtk.TreeStore ListViewElement)
+  treeview <- Gtk.treeViewNewWithModel treeStore :: IO Gtk.TreeView
 
   Gtk.treeViewSetHeadersVisible treeview True
   Gtk.treeViewSetEnableTreeLines treeview True
@@ -79,194 +113,199 @@ newLookupTreeview initialValue msgStore = do
 --  Gtk.treeViewSetGridLines treeview Gtk.TreeViewGridLinesBoth
 
   -- add some columns
-  colName    <- Gtk.treeViewColumnNew
-  colType    <- Gtk.treeViewColumnNew
+  colName <- Gtk.treeViewColumnNew
+  colType <- Gtk.treeViewColumnNew
   colUpstreamValue <- Gtk.treeViewColumnNew
-  colStagedValue   <- Gtk.treeViewColumnNew
-  colBool    <- Gtk.treeViewColumnNew
-  colSpin    <- Gtk.treeViewColumnNew
+  colStagedValue <- Gtk.treeViewColumnNew
+  colCombo <- Gtk.treeViewColumnNew
 
   Gtk.treeViewColumnSetTitle colName "name"
-  Gtk.treeViewColumnSetTitle colBool "bool"
   Gtk.treeViewColumnSetTitle colType "type"
   Gtk.treeViewColumnSetTitle colUpstreamValue "upstream"
   Gtk.treeViewColumnSetTitle colStagedValue "staged"
-  Gtk.treeViewColumnSetTitle colSpin "spin"
+  Gtk.treeViewColumnSetTitle colCombo "combo"
 
   rendererName <- Gtk.cellRendererTextNew
-  rendererBool <- Gtk.cellRendererToggleNew
   rendererType <- Gtk.cellRendererTextNew
   rendererStagedValue <- Gtk.cellRendererTextNew
   rendererUpstreamValue <- Gtk.cellRendererTextNew
-  rendererSpin <- Gtk.cellRendererSpinNew
+  rendererCombo <- Gtk.cellRendererComboNew
 
   Gtk.cellLayoutPackStart colName    rendererName True
   Gtk.cellLayoutPackStart colType    rendererType True
   Gtk.cellLayoutPackStart colUpstreamValue rendererUpstreamValue True
   Gtk.cellLayoutPackStart colStagedValue   rendererStagedValue True
-  Gtk.cellLayoutPackStart colBool    rendererBool True
-  Gtk.cellLayoutPackStart colSpin    rendererSpin True
+  Gtk.cellLayoutPackStart colCombo    rendererCombo True
 
   _ <- Gtk.treeViewAppendColumn treeview colName
   _ <- Gtk.treeViewAppendColumn treeview colType
   _ <- Gtk.treeViewAppendColumn treeview colUpstreamValue
   _ <- Gtk.treeViewAppendColumn treeview colStagedValue
-  _ <- Gtk.treeViewAppendColumn treeview colBool
-  _ <- Gtk.treeViewAppendColumn treeview colSpin
+  _ <- Gtk.treeViewAppendColumn treeview colCombo
 
   -- data name
-  let showName (Just _) name _ = name
-      showName Nothing name "" = name
-      showName Nothing name typeName = name ++ " (" ++ typeName ++ ")"
+  let showName :: ListViewElement -> String
+      showName (LveSum se) = fromMName $ seName se
+      showName (LveField fe) = fromMName $ feName fe
+      showName (LveConstructor ce) = fromMName $ ceName ce
+      fromMName (Just r) = r
+      fromMName Nothing = "()"
 
   Gtk.cellLayoutSetAttributes colName rendererName treeStore $
-    \(ListViewInfo {lviName = name, lviType = typeName, lviField = field}) ->
-      [ Gtk.cellText := showName field name typeName
-      ]
+    \lve -> [Gtk.cellText := showName lve]
 
   -- data type
-  let showType (Just x) = describeField x
-      showType Nothing = ""
+  let showType :: ListViewElement -> String
+      showType (LveSum se) = seDName se
+      showType (LveConstructor ce) = ceDName ce
+      showType (LveField fe) = describeDField (feStagedField fe)
 
   Gtk.cellLayoutSetAttributes colType rendererType treeStore $
-        \lvi -> [ Gtk.cellText := showType (lviField lvi) ]
+        \lve -> [ Gtk.cellText := showType lve ]
 
-  -- upstream value
-  let showUpstreamValue lvi = case lviField lvi of
-         (Just (FieldBool f)) -> show (upstream ^. f)
-         (Just (FieldDouble f)) -> printf "%.2g" (upstream ^. f)
-         (Just (FieldFloat f))  -> printf "%.2g" (upstream ^. f)
-         (Just (FieldInt f))  -> show (upstream ^. f)
-         (Just (FieldString f))  -> upstream ^. f
-         Just FieldSorry -> ""
-         Nothing -> ""
-         where
-           upstream = lviUpstreamValue lvi
+  let showField :: DField -> String
+      showField (DDouble x) = printf "%.2g" x
+      showField (DFloat x) = printf "%.2g" x
+      showField (DInt x) = show x
+      showField (DString x) = x
+      showField DSorry = ""
+
+      showSum :: DSimpleEnum -> String
+      showSum (DSimpleEnum names k) = case safeIndex names k of
+        Just n -> n
+        Nothing -> "<out of bounds>"
+        where
+          safeIndex (x:_) 0 = Just x
+          safeIndex (_:xs) j = safeIndex xs (j-1)
+          safeIndex [] _ = Nothing
+
 
   Gtk.cellLayoutSetAttributes colUpstreamValue rendererUpstreamValue treeStore $
-        \lvi -> [ Gtk.cellText := showUpstreamValue lvi
-                , Gtk.cellTextEditable := False
-                ]
-
-  -- staged value
-  let showStagedValue lvi = case lviField lvi of
-         Just (FieldBool f) -> show (staged ^. f)
-         Just (FieldDouble f) -> printf "%.2g" (staged ^. f)
-         Just (FieldFloat f)  -> printf "%.2g" (staged ^. f)
-         Just (FieldInt f)  -> show (staged ^. f)
-         Just (FieldString f)  -> staged ^. f
-         Just FieldSorry -> ""
-         Nothing -> ""
-         where
-           staged = lviStagedMutator lvi (lviUpstreamValue lvi)
+    \lve -> case lve of
+      LveField fe -> [ Gtk.cellText := showField (feUpstreamField fe)
+                     , Gtk.cellTextEditable := False
+                     ]
+      LveSum se -> [ Gtk.cellText := showSum (seUpstreamSum se)
+                   , Gtk.cellTextEditable := False
+                   ]
+      LveConstructor _ -> [ Gtk.cellText := ""
+                          , Gtk.cellTextEditable := False
+                          ]
 
   Gtk.cellLayoutSetAttributes colStagedValue rendererStagedValue treeStore $
-        \lvi -> case lviField lvi of
-           Just _ -> [ Gtk.cellText := showStagedValue lvi
-                     , Gtk.cellTextEditable := True
-                     ]
-           Nothing -> [ Gtk.cellText := ""
-                      , Gtk.cellTextEditable := False
-                      ]
+    \lve -> case lve of
+      LveField fe ->
+        [ Gtk.cellText := showField (feStagedField fe)
+        , Gtk.cellTextEditable := True
+        ]
+      LveSum se ->
+        [ Gtk.cellText := showSum (seStagedSum se)
+        , Gtk.cellTextEditable := True
+        ]
+      LveConstructor _ ->
+        [ Gtk.cellText := ""
+        , Gtk.cellTextEditable := False
+        ]
+
+  let modifyField :: DField -> String -> DField
+      modifyField f0@(DDouble _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DDouble x
+      modifyField f0@(DFloat _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DFloat x
+      modifyField f0@(DInt _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DInt x
+      modifyField (DString _) txt = DString txt
+      modifyField DSorry _ = DSorry
+
+      modifySum :: DSimpleEnum -> String -> DSimpleEnum
+      modifySum (DSimpleEnum options k0) txt = DSimpleEnum options k1
+        where
+          k1 = case safeLookup options 0 of
+            Nothing -> k0
+            Just r -> r
+          safeLookup (opt:opts) j
+            | opt == txt = Just j
+            | otherwise = safeLookup opts (j+1)
+          safeLookup [] _ = Nothing
+
   _ <- on rendererStagedValue Gtk.edited $ \treePath txt -> do
     let _ = txt :: String
-    lvi0 <- Gtk.treeStoreGetValue treeStore treePath
-    let lvi = case lviField lvi0 of
-          Just (FieldBool f)
-            | txt `elem` ["t","true","True","1"] ->
-                lvi0 { lviStagedMutator = f .~ True, lviMarked = True }
-            | txt `elem` ["f","false","False","0"] ->
-                lvi0 {lviStagedMutator = f .~ False, lviMarked = False }
-            | otherwise -> lvi0
-          Just (FieldDouble f) -> case readMaybe txt of
-             Nothing -> lvi0
-             Just x -> lvi0 { lviStagedMutator = f .~ x }
-          Just (FieldFloat f) -> case readMaybe txt of
-             Nothing -> lvi0
-             Just x -> lvi0 { lviStagedMutator = f .~ x }
-          Just (FieldInt f) -> case readMaybe txt of
-             Nothing -> lvi0
-             Just x -> lvi0 { lviStagedMutator = f .~ x }
-          Just (FieldString f) -> lvi0 { lviStagedMutator = f .~ txt }
-          Just FieldSorry -> lvi0
-          Nothing -> lvi0
-    Gtk.treeStoreSetValue treeStore treePath lvi
-    return ()
+    lve0 <- Gtk.treeStoreGetValue treeStore treePath
+    let lve = case lve0 of
+          LveField fe -> LveField (fe {feStagedField = modifyField (feStagedField fe) txt})
+          LveSum se -> LveSum (se {seStagedSum = modifySum (seStagedSum se) txt})
+          ce@(LveConstructor _) -> ce -- not editible anyway
+    Gtk.treeStoreSetValue treeStore treePath lve
 
-  -- bool
-  let toShownBool marked (Just (FieldBool _)) =
-         [ Gtk.cellToggleInconsistent := False
-         , Gtk.cellToggleActive := marked
-         , Gtk.cellToggleActivatable := True
-         , Gtk.cellToggleRadio := True
-         , Gtk.cellToggleIndicatorSize := 12
-         ]
-      toShownBool _ _ =
-         [ Gtk.cellToggleInconsistent := True
-         , Gtk.cellToggleActive := False
-         , Gtk.cellToggleActivatable := False
-         , Gtk.cellToggleRadio := True
-         , Gtk.cellToggleIndicatorSize := 0
-         ]
+--  -- bool
+--  let toShownBool marked (Just (FieldBool _)) =
+--         [ Gtk.cellToggleInconsistent := False
+--         , Gtk.cellToggleActive := marked
+--         , Gtk.cellToggleActivatable := True
+--         , Gtk.cellToggleRadio := True
+--         , Gtk.cellToggleIndicatorSize := 12
+--         ]
+--      toShownBool _ _ =
+--         [ Gtk.cellToggleInconsistent := True
+--         , Gtk.cellToggleActive := False
+--         , Gtk.cellToggleActivatable := False
+--         , Gtk.cellToggleRadio := True
+--         , Gtk.cellToggleIndicatorSize := 0
+--         ]
+--
+--  Gtk.cellLayoutSetAttributes colBool rendererBool treeStore $
+--        \lve -> toShownBool (lveMarked lve) (lveField lve)
 
-  Gtk.cellLayoutSetAttributes colBool rendererBool treeStore $
-        \lvi -> toShownBool (lviMarked lvi) (lviField lvi)
+-------------   _ <- on rendererBool Gtk.cellToggled $ \pathStr -> do
+-------------     let treePath = Gtk.stringToTreePath pathStr
+-------------     lve0 <- Gtk.treeStoreGetValue treeStore treePath
+-------------     let newMarked :: Bool
+-------------         newMarked = not (lveMarked lve0)
+-------------         newMutator :: a -> a
+-------------         newMutator = case lveField lve0 of
+------------- --          Just (FieldBool f) -> f .~ newMarked
+-------------           Just f -> error $ "the new mutator must be a bool mutator, got "
+-------------                     ++ describeDField f
+-------------           Nothing -> error "the new mutator must be not Nothing"
+-------------     Gtk.treeStoreSetValue treeStore treePath
+-------------       (lve0 {lveMarked = newMarked, lveStagedValue = newMutator})
+--    return ()
 
-  _ <- on rendererBool Gtk.cellToggled $ \pathStr -> do
-    let treePath = Gtk.stringToTreePath pathStr
-    lvi0 <- Gtk.treeStoreGetValue treeStore treePath
-    let newMarked :: Bool
-        newMarked = not (lviMarked lvi0)
-        newMutator :: a -> a
-        newMutator = case lviField lvi0 of
-          Just (FieldBool f) -> f .~ newMarked
-          Just f -> error $ "the new mutator must be a bool mutator, got "
-                    ++ describeField f
-          Nothing -> error "the new mutator must be not Nothing"
-    Gtk.treeStoreSetValue treeStore treePath
-      (lvi0 {lviMarked = newMarked, lviStagedMutator = newMutator})
-    return ()
-
-  -- spin
-  let toSpin _lvi = []
-  Gtk.cellLayoutSetAttributes colSpin rendererSpin treeStore toSpin
-
-
-  let -- build the signal tree
-      convert :: Tree.Tree (String, String, Maybe (Field a))
-                 -> Tree.Tree (ListViewInfo a)
-      convert (Tree.Node (name, typ, getter) others) =
-        Tree.Node (ListViewInfo name typ getter marked id initialValue "")
-        (map convert others)
-        where
-          marked = case (getter :: Maybe (Field a)) of
-            Just (FieldBool f) -> initialValue ^. f
-            _ -> False
+  -- combo box
+  let toCombo _lve = []
+  Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore toCombo
 
   Gtk.treeStoreClear treeStore
-  Gtk.treeStoreInsertForest treeStore [] 0 (map convert signalTree)
+  Gtk.treeStoreInsertTree treeStore [] 0 (ddataToTree (Just rootName) initialValue)
 
-  let forEach :: (ListViewInfo a -> IO (ListViewInfo a)) -> IO ()
-      forEach f = Gtk.treeModelForeach treeStore $ \treeIter -> do
-         treePath <- Gtk.treeModelGetPath treeStore treeIter
-         lvi0 <- Gtk.treeStoreGetValue treeStore treePath
-         lvi1 <- f lvi0
-         Gtk.treeStoreSetValue treeStore treePath lvi1
-         return False
+--  let forEach :: (ListViewElement -> IO ListViewElement) -> IO ()
+--      forEach f = Gtk.treeModelForeach treeStore $ \treeIter -> do
+--         treePath <- Gtk.treeModelGetPath treeStore treeIter
+--         lve0 <- Gtk.treeStoreGetValue treeStore treePath
+--         lve1 <- f lve0
+--         Gtk.treeStoreSetValue treeStore treePath lve1
+--         return False
 
-  latestUpstreamRef <- IORef.newIORef initialValue
-  let gotNewValue val = do
-        IORef.writeIORef latestUpstreamRef val
-        forEach (\lvi -> return (lvi {lviUpstreamValue = val}))
+--  let gotNewValue val = do
+--        moldTree <- Gtk.treeStoreLookup treeStore [0]
+--        oldTree <- case moldTree of
+--          Nothing -> error "failed looking up treestore"
+--          Just r -> return r
+--
+--        -- forEach (\lve -> return (lve {lveUpstreamValue = val}))
+--        return ()
 
-  -- on insert or change, rebuild the signal tree
-  _ <- on msgStore Gtk.rowChanged $ \_ changedPath -> do
-    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
-    gotNewValue newMsg
-
-  _ <- on msgStore Gtk.rowInserted $ \_ changedPath -> do
-    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
-    gotNewValue newMsg
+--  -- on insert or change, rebuild the signal tree
+--  _ <- on treeStore Gtk.rowChanged $ \_ changedPath -> do
+--    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
+--    gotNewValue newMsg
+--
+--  _ <- on treeStore Gtk.rowInserted $ \_ changedPath -> do
+--    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
+--    gotNewValue newMsg
 
   scroll <- Gtk.scrolledWindowNew Nothing Nothing
   Gtk.containerAdd scroll treeview
@@ -274,99 +313,154 @@ newLookupTreeview initialValue msgStore = do
                  , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
                  ]
 
-  let getAll :: IO [ListViewInfo a]
-      getAll = do
-         lvisRef <- IORef.newIORef []
-         Gtk.treeModelForeach treeStore $ \treeIter -> do
-            treePath <- Gtk.treeModelGetPath treeStore treeIter
-            lvi <- Gtk.treeStoreGetValue treeStore treePath
-            IORef.modifyIORef lvisRef (lvi:)
-            return False
-         fmap reverse (IORef.readIORef lvisRef)
-  let getLatest = do
-        lvis <- getAll
-        latestUpstream <- IORef.readIORef latestUpstreamRef
-        return (foldl' (flip lviStagedMutator) latestUpstream lvis)
+  let mergeTrees :: Gtk.TreePath -> Tree ListViewElement -> IO ()
+      mergeTrees treePath newTree = do
+        moldTree <- Gtk.treeStoreLookup treeStore treePath
+        oldTree <- case moldTree of
+          Nothing -> error "failed looking up treestore"
+          Just r -> return r
+          :: IO (Tree ListViewElement)
 
-  return (scroll, getLatest)
+        let assertCompatible :: Bool -> IO ()
+            assertCompatible False = error "the \"impossible\" happened: trees aren't compatible"
+            assertCompatible True = return ()
 
+        case (oldTree, newTree) of
+          -- sums
+          (Node (LveSum oldSum) [], Node (LveSum newSum) []) -> do
+            let (compatible, mergedSum) = mergeSums oldSum newSum
+            assertCompatible compatible
+            changed <- Gtk.treeStoreChange treeStore treePath (const (LveSum mergedSum))
+            case changed of
+              False -> error $ "merged sums didn't change"
+              True -> return ()
+          (_, Node (LveSum _) []) -> assertCompatible False
+          (_, Node (LveSum _) _) -> error "mergeTrees: new LveSum has children"
 
+          -- fields
+          (Node (LveField oldField) [], Node (LveField newField) []) -> do
+            let (compatible, mergedField) = mergeFields oldField newField
+            assertCompatible compatible
+            changed <- Gtk.treeStoreChange treeStore treePath (const (LveField mergedField))
+            case changed of
+              False -> error $ "merged fields didn't change"
+              True -> return ()
+          (_, Node (LveField _) []) -> assertCompatible False
+          (_, Node (LveField _) _) -> error "mergeTrees: new LveField has children"
 
-makeOptionsWidget :: CC.MVar (GraphInfo a) -> IO Gtk.VBox
-makeOptionsWidget graphInfoMVar = do
-  -- user selectable range
-  xRange <- Gtk.entryNew
-  Gtk.set xRange [ Gtk.entryEditable := False
-                 , Gtk.widgetSensitive := False
-                 ]
-  xRangeBox <- labeledWidget "x range:" xRange
-  Gtk.set xRange [Gtk.entryText := "(-10,10)"]
-  let updateXRange = do
-        Gtk.set xRange [ Gtk.entryEditable := True
-                       , Gtk.widgetSensitive := True
-                       ]
-        txt <- Gtk.get xRange Gtk.entryText
-        gi <- CC.readMVar graphInfoMVar
-        case readMaybe txt of
-          Nothing -> do
-            putStrLn $ "invalid x range entry: " ++ txt
-            Gtk.set xRange [Gtk.entryText := "(min,max)"]
-          Just (z0,z1) -> if z0 >= z1
-                    then do
-                      putStrLn $ "invalid x range entry (min >= max): " ++ txt
-                      Gtk.set xRange [Gtk.entryText := "(min,max)"]
-                      return ()
-                    else do
-                      _ <- CC.swapMVar graphInfoMVar (gi {giXRange = Just (z0,z1)})
-                      return ()
-  _ <- on xRange Gtk.entryActivate updateXRange
+          -- constructors
+          (Node (LveConstructor oldCons) oldChildren, Node (LveConstructor newCons) newChildren)
+            | oldCons /= newCons -> assertCompatible False
+            | length oldChildren /= length newChildren -> assertCompatible False
+            | otherwise -> do
+                mtreeIter <- Gtk.treeModelGetIter treeStore treePath
+                treeIter <- case mtreeIter of
+                  Nothing -> error "error looking up tree iter"
+                  Just r -> return r
+                nchildren <- Gtk.treeModelIterNChildren treeStore (Just treeIter)
+                void $ when (nchildren /= length oldChildren) $
+                  error "error $ treeModelIterNChildren /= length oldChildren"
+                let mergeNthChild _ [] = return ()
+                    mergeNthChild k (newChild:others) = do
+                      mtreeIter' <- Gtk.treeModelGetIter treeStore treePath
+                      treeIter' <- case mtreeIter' of
+                        Nothing -> error "error looking up tree iter"
+                        Just r -> return r
+                      mchildIter <- Gtk.treeModelIterNthChild treeStore (Just treeIter') k
+                      childIter <- case mchildIter of
+                        Nothing -> error "treeModelIterNthChild failed"
+                        Just r -> return r
+                      mchildPath <- Gtk.treeModelGetPath treeStore childIter
+                      childPath <- case mchildPath of
+                        [] -> error "child TreePath is invalid"
+                        r -> return r
+                      mergeTrees childPath newChild
+                      mergeNthChild (k + 1) others
+                mergeNthChild 0 newChildren
+          (_, Node (LveConstructor _) _) -> assertCompatible False
 
-  -- linear or log scaling on the x and y axis?
-  xScalingSelector <- Gtk.comboBoxNewText
-  mapM_ (Gtk.comboBoxAppendText xScalingSelector . T.pack)
-    ["linear (auto)","linear (manual)","logarithmic (auto)"]
-  Gtk.comboBoxSetActive xScalingSelector 0
-  xScalingBox <- labeledWidget "x scaling:" xScalingSelector
-  let updateXScaling = do
-        k <- Gtk.comboBoxGetActive xScalingSelector
-        case k of
-          0 -> do
-            Gtk.set xRange [ Gtk.entryEditable := False
-                           , Gtk.widgetSensitive := False
-                           ]
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giXScaling = False, giXRange = Nothing}
-          1 -> do
-            Gtk.set xRange [ Gtk.entryEditable := False
-                           , Gtk.widgetSensitive := False
-                           ]
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giXScaling = True, giXRange = Nothing}
-          _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 3"
-  updateXScaling
-  _ <- on xScalingSelector Gtk.changed updateXScaling
+      receiveNewValue :: DTree -> IO ()
+      receiveNewValue newMsg = do
+        moldTree <- Gtk.treeStoreLookup treeStore [0]
+        oldTree <- case moldTree of
+          Nothing -> error "failed looking up old treestore"
+          Just r -> return r
 
-  -- vbox to hold the little window on the left
-  vbox <- Gtk.vBoxNew False 4
+        let newTree :: Tree ListViewElement
+            newTree = ddataToTree (Just rootName) newMsg
+            (compatible, mergedTree) = compatibleTrees oldTree newTree
+        if compatible
+          then mergeTrees [0] newTree -- merge in place so that the expando doesn't collapse
+          else do
+            putStrLn "settings app rebuilding tree..."
+            Gtk.treeStoreClear treeStore
+            Gtk.treeStoreInsertTree treeStore [] 0 mergedTree
 
-  Gtk.set vbox [ Gtk.containerChild := xScalingBox
-               , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
-               , Gtk.containerChild := xRangeBox
-               , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
-               ]
+      getLatestStaged = do
+        mtree <- Gtk.treeStoreLookup treeStore [0]
+        case mtree of
+          Nothing -> error "failed looking up treestore"
+          Just r -> return (treeToStagedDData r)
 
-  return vbox
+  return (scroll, getLatestStaged, receiveNewValue)
 
+mergeSums :: SumElem -> SumElem -> (Bool, SumElem)
+mergeSums oldSum newSum
+  | seName oldSum /= seName newSum = (False, newSum)
+  | seDName oldSum /= seDName newSum = (False, newSum)
+  | oldOptions /= newOptions = (False, newSum)
+  | otherwise = (True, newSum {seStagedSum = seStagedSum oldSum})
+  where
+    DSimpleEnum oldOptions _ = seStagedSum oldSum
+    DSimpleEnum newOptions _ = seStagedSum newSum
 
+mergeFields :: FieldElem -> FieldElem -> (Bool, FieldElem)
+mergeFields oldElem newElem
+  | feName oldElem /= feName newElem = (False, newElem)
+  | not (sameDFieldType oldField newField) = (False, newElem)
+  | otherwise = (True, newElem {feStagedField = oldField})
+  where
+    oldField = feStagedField oldElem
+    newField = feStagedField newElem
 
--- helper to make an hbox with a label
-labeledWidget :: Gtk.WidgetClass a => String -> a -> IO Gtk.HBox
-labeledWidget name widget = do
-  label <- Gtk.labelNew (Just name)
-  hbox <- Gtk.hBoxNew False 4
-  Gtk.set hbox [ Gtk.containerChild := label
-               , Gtk.containerChild := widget
-               , Gtk.boxChildPacking label := Gtk.PackNatural
---               , Gtk.boxChildPacking widget := Gtk.PackNatural
-               ]
-  return hbox
+-- return the merged trees and a flag saying if the trees have the same structure
+compatibleTrees :: Tree ListViewElement -> Tree ListViewElement -> (Bool, Tree ListViewElement)
+-- sums
+compatibleTrees (Node (LveSum oldSum) []) (Node (LveSum newSum) []) =
+  (compatible, Node (LveSum merged) [])
+  where
+    (compatible, merged) = mergeSums oldSum newSum
+compatibleTrees _ newNode@(Node (LveSum _) []) = (False, newNode)
+compatibleTrees _ (Node (LveSum _) _) = error "compatibleTrees: new LveSum has children"
+-- fields
+compatibleTrees (Node (LveField oldField) []) (Node (LveField newField) []) =
+  (compatible, Node (LveField merged) [])
+  where
+    (compatible, merged) = mergeFields oldField newField
+compatibleTrees _ newNode@(Node (LveField _) []) = (False, newNode)
+compatibleTrees _ (Node (LveField _) _) = error "compatibleTrees: new LveField has children"
+-- constructors
+compatibleTrees (Node (LveConstructor oldCons) _) newNode@(Node (LveConstructor newCons) _)
+  | oldCons /= newCons = (False, newNode)
+compatibleTrees (Node (LveConstructor _) oldChildren) (Node (LveConstructor newCons) newChildren) =
+  (childrenCompatible, Node (LveConstructor newCons) mergedChildren)
+  where
+    (childrenCompatible, mergedChildren) = mergeChildren newChildren
+
+    mergeChild :: Tree ListViewElement -> (Bool, Tree ListViewElement)
+    mergeChild newChild = tryOldChildren oldChildren
+      where
+        tryOldChildren [] = (False, newChild)
+        tryOldChildren (oldChild:others)
+          | compatible = (True, mergedChild)
+          | otherwise = tryOldChildren others
+          where
+            (compatible, mergedChild) = compatibleTrees oldChild newChild
+
+    mergeChildren :: [Tree ListViewElement] -> (Bool, [Tree ListViewElement])
+    mergeChildren (newChild:others) = (childCompatible && othersCompatible, mergedChild:mergedOthers)
+      where
+        (childCompatible, mergedChild) = mergeChild newChild
+        (othersCompatible, mergedOthers) = mergeChildren others
+    mergeChildren [] = (True, [])
+compatibleTrees _ newNode@(Node (LveConstructor _) _) = (False, newNode)

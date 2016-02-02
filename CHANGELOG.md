@@ -52,3 +52,8 @@ remove Generic requirement for some Lookup instances
 ---
 * Switch from Tree ([String], String, Maybe (a -> [[(Double, Double)]]))
          to   Tree ([String], Either String (a -> [[(Double, Double)]]))
+
+HEAD
+---
+* generic-accessors 0.6.0.0 compatibility
+* rewrite settings app to use dynamic data

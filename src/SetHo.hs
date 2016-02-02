@@ -5,26 +5,24 @@
 -- generating a GUI for getting/setting options.
 module SetHo
        ( runSetter
-         -- * re-exported for convenience
-       , Lookup
        ) where
 
 import qualified GHC.Stats
 
+import Accessors.Dynamic ( DTree )
 import qualified Control.Concurrent as CC
 import Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
 --import System.Glib.Signals ( on )
 
-import Accessors
-
-import SetHo.LookupTree ( GraphInfo(..), newLookupTreeview, makeOptionsWidget )
+import SetHo.LookupTree ( newLookupTreeview )
+import SetHo.OptionsWidget ( GraphInfo(..), makeOptionsWidget )
 
 
 -- | fire up the the GUI
-runSetter :: forall a . Lookup a => a -> IO a -> (a -> IO ()) -> IO ()
-runSetter initialValue refresh commit = do
+runSetter :: String -> DTree -> IO (Maybe DTree) -> IO () -> (DTree -> IO ()) -> IO ()
+runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
   _ <- Gtk.initGUI
@@ -70,21 +68,10 @@ runSetter initialValue refresh commit = do
   buttonRefresh <- Gtk.buttonNewWithLabel "refresh"
   Gtk.widgetSetTooltipText buttonCommit (Just "SET ME SET ME GO HEAD DO IT COME ON SET ME")
 
-  msgStore <- Gtk.listStoreNew [initialValue]
-  let newMessage :: a -> IO ()
-      newMessage next =
-        -- grab the time and counter
-        Gtk.postGUIAsync $ do
-          size <- Gtk.listStoreGetSize msgStore
-          if size == 0
-            then Gtk.listStorePrepend msgStore next
-            else Gtk.listStoreSetValue msgStore 0 next
-
   -- mvar with all the user input
   graphInfoMVar <- CC.newMVar GraphInfo { giXScaling = True
                                         , giXRange = Nothing
-                                        , giValue = initialValue
-                                        } :: IO (CC.MVar (GraphInfo a))
+                                        } :: IO (CC.MVar GraphInfo)
 
   -- the options widget
   optionsWidget <- makeOptionsWidget graphInfoMVar
@@ -94,7 +81,7 @@ runSetter initialValue refresh commit = do
                   ]
 
   -- the signal selector
-  (treeview, getLatestStaged) <- newLookupTreeview initialValue msgStore
+  (treeview, getLatestStaged, receiveNewValue) <- newLookupTreeview rootName initialValue
   treeviewExpander <- Gtk.expanderNew "signals"
   Gtk.set treeviewExpander
     [ Gtk.containerChild := treeview
@@ -117,14 +104,20 @@ runSetter initialValue refresh commit = do
     ]
 
   _ <- Gtk.onClicked buttonCommit $ do
-       val <- getLatestStaged
-       commit val
+    val <- getLatestStaged
+    commit val
        
-  _ <- Gtk.onClicked buttonRefresh $ do
-    newVal <- refresh
-    newMessage newVal
+  _ <- Gtk.onClicked buttonRefresh sendRequest
 
--- add widget to window and show
+  let pollForNewMessage = do
+        mmsg <- userPollForNewMessage
+        case mmsg of
+          Nothing -> return ()
+          Just newVal -> receiveNewValue newVal
+
+  _ <- Gtk.timeoutAddFull (pollForNewMessage >> return True) Gtk.priorityDefault 300
+
+  -- add widget to window and show
   _ <- Gtk.set win [ Gtk.containerChild := vbox ]
   Gtk.widgetShowAll win
   Gtk.mainGUI

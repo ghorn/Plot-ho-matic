@@ -29,6 +29,7 @@ library
                      PlotHo.PlotChart,
                      PlotHo.PlotTypes,
                      SetHo.LookupTree
+                     SetHo.OptionsWidget
   build-depends:     base >= 4.6.0.0 && < 5
                      , containers
                      , lens
@@ -41,7 +42,7 @@ library
                      , cairo
                      , text
                      , vector
-                     , generic-accessors >= 0.5.0.0
+                     , generic-accessors >= 0.6.0.0
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts

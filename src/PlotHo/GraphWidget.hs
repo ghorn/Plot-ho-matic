@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
-{-# Language ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PackageImports #-}
 
 module PlotHo.GraphWidget
        ( newGraph
@@ -7,14 +8,15 @@ module PlotHo.GraphWidget
 
 import qualified Control.Concurrent as CC
 import Control.Monad ( void, when, unless )
+import Control.Monad.IO.Class ( liftIO )
 import Data.Either ( isRight )
 import qualified Data.IORef as IORef
 import Data.List ( intercalate )
 import qualified Data.Map as M
 import Data.Maybe ( isNothing, fromJust )
 import qualified Data.Tree as Tree
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 import qualified Data.Text as T
@@ -82,7 +84,7 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
                          chartGtkUpdateCanvas latestRenderable chartCanvas
                          return False -- we're done now, don't call this again
 
-  _ <- Gtk.onExpose chartCanvas $ const (redraw >> return True)
+  _ <- on chartCanvas Gtk.exposeEvent $ liftIO (redraw >> return True)
 
 
   -- the options widget

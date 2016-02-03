@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# Language PackageImports #-}
 
 module SetHo.LookupTree
        ( ListViewElement(..)
@@ -12,9 +13,10 @@ import Accessors.Dynamic
        , denumToString, denumToStringOrMsg, denumSetString
        )
 import Control.Monad ( void, when )
+import qualified Data.Text as T
 import Data.Tree ( Tree(..) )
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 import Text.Printf ( printf )
@@ -67,8 +69,9 @@ ddataToTree name (Right (DData dname (DConstructor cname fields))) = do
         }
   children <- mapM (uncurry ddataToTree) fields
   return $ Node (LveConstructor ce) children
-ddataToTree name (Right (DData dname (DSum s@(DSimpleEnum options _)))) = do
-  listStore <- Gtk.listStoreNew options
+ddataToTree name (Right (DData dname (DSum s))) = do
+  -- Dummy list store. We'll set the options ourselves in the editingStarted signal
+  listStore <- Gtk.listStoreNew []
   Gtk.treeModelSetColumn listStore (Gtk.makeColumnIdString 0) id
 --  let value = 0
 --      lower = 0
@@ -252,11 +255,8 @@ newLookupTreeview rootName initialValue = do
   Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore $ \lve ->
     case lve of
       LveSum (SumElem {seStagedSum = denum, seListStore = listStore}) ->
-        [ Gtk.cellMode := Gtk.CellRendererModeActivatable
-        , Gtk.cellComboHasEntry := False
+        [ Gtk.cellComboHasEntry := False
         , Gtk.cellTextEditable := True
-        , Gtk.cellVisible := True
-        , Gtk.cellSensitive := True
         , Gtk.cellComboTextModel := (listStore, Gtk.makeColumnIdString 0 :: Gtk.ColumnId String String)
         , Gtk.cellText := denumToStringOrMsg denum
         ]
@@ -264,8 +264,20 @@ newLookupTreeview rootName initialValue = do
            , Gtk.cellText := ""
            ]
 
+  _ <- on rendererCombo Gtk.editingStarted $ \widget treePath -> do
+    lve <- Gtk.treeStoreGetValue treeStore treePath
+    case lve of
+      LveField _ -> error "Combo renderer is Field"
+      LveConstructor _ -> error "Combo renderer is Constructor"
+      LveSum se -> do
+        let comboBox = Gtk.castToComboBox widget
+        comboListStore <- Gtk.comboBoxSetModelText comboBox
+        let DSimpleEnum constructors active = seStagedSum se
+        mapM_ (Gtk.listStoreAppend comboListStore . T.pack) constructors
+        Gtk.comboBoxSetActive comboBox active
+
+
   _ <- on rendererCombo Gtk.edited $ \treePath newVal -> do
-    putStrLn "combo box is being edited"
     lve0 <- Gtk.treeStoreGetValue treeStore treePath
     let newLve = case lve0 of
           LveSum se -> LveSum (se {seStagedSum = case denumSetString (seStagedSum se) newVal of

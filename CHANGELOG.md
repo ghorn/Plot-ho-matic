@@ -53,7 +53,8 @@ remove Generic requirement for some Lookup instances
 * Switch from Tree ([String], String, Maybe (a -> [[(Double, Double)]]))
          to   Tree ([String], Either String (a -> [[(Double, Double)]]))
 
-HEAD
+0.9.0.0
 ---
 * generic-accessors 0.6.0.0 compatibility
 * rewrite settings app to use dynamic data
+* upgrade to GTK3

@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ScopedTypeVariables #-}
 {-# Language DeriveFunctor #-}
+{-# LANGUAGE PackageImports #-}
 
 module PlotHo
        ( Plotter
@@ -20,6 +21,7 @@ import Control.Applicative ( Applicative(..), liftA2 )
 import Control.Lens ( (^.) )
 import Data.Monoid ( mappend, mempty )
 import Control.Monad ( when )
+import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
 import qualified Data.Foldable as F
 import qualified Data.IORef as IORef
@@ -28,8 +30,8 @@ import Data.Tree ( Tree )
 import qualified Data.Tree as Tree
 import Data.Vector ( Vector )
 import qualified Data.Vector as V
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
 import Text.Read ( readMaybe )
 import System.Glib.Signals ( on )
@@ -58,10 +60,10 @@ instance Monad Plotter where
         return (b, w `mappend` w')
     fail msg = Plotter $ fail msg
 
-liftIO :: IO a -> Plotter a
-liftIO m = Plotter $ do
-  a <- m
-  return (a, mempty)
+instance MonadIO Plotter where
+  liftIO m = Plotter $ do
+    a <- m
+    return (a, mempty)
 
 tell :: ChannelStuff -> Plotter ()
 tell w = Plotter (return ((), [w]))
@@ -370,18 +372,19 @@ runPlotter plotterMonad = do
 
 
 
-  let killEverything = do
+  let killEverything :: IO ()
+      killEverything = do
         CC.killThread statsThread
         gws <- CC.readMVar graphWindowsToBeKilled
         mapM_ Gtk.widgetDestroy gws
         mapM_ csKillThreads channels
         Gtk.mainQuit
-  _ <- Gtk.onDestroy win killEverything
+  _ <- on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 
   --------------- main widget -----------------
   -- button to clear history
   buttonDoNothing <- Gtk.buttonNewWithLabel "this button does absolutely nothing"
-  _ <- Gtk.onClicked buttonDoNothing $
+  _ <- on buttonDoNothing Gtk.buttonActivated $
        putStrLn "seriously, it does nothing"
 
   -- box to hold list of channels
@@ -431,11 +434,11 @@ newChannelWidget channel graphWindowsToBeKilled = do
 --    putStrLn "i promise, nothing happens"
 --    -- CC.modifyMVar_ logData (const (return S.empty))
 --    return ()
-  let triggerYo action = Gtk.onClicked buttonAlsoDoNothing action >> return ()
+  let triggerYo action = on buttonAlsoDoNothing Gtk.buttonActivated action >> return ()
 
   -- button to make a new graph
   buttonNew <- Gtk.buttonNewWithLabel "new graph"
-  _ <- Gtk.onClicked buttonNew $ do
+  _ <- on buttonNew Gtk.buttonActivated $ do
     graphWin <- newGraph
                 triggerYo
                 (chanName channel)

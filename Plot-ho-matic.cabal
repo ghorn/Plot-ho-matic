@@ -35,13 +35,14 @@ library
                      , lens
                      , data-default-class
                      , glib
-                     , gtk >= 0.13
+                     , gtk3 >= 0.14.2
                      , time
                      , Chart >= 1.1
                      , Chart-cairo >= 1.1
                      , cairo
                      , text
                      , vector
+                     , transformers
                      , generic-accessors >= 0.6.0.0
 
   ghc-options:      -O2 -Wall

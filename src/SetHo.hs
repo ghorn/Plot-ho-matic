@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# Language PackageImports #-}
 
 -- | This is an experimental and unstable interface for
 -- generating a GUI for getting/setting options.
@@ -11,10 +12,11 @@ import qualified GHC.Stats
 
 import Accessors.Dynamic ( DTree )
 import qualified Control.Concurrent as CC
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import Control.Monad.IO.Class ( liftIO )
+import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
---import System.Glib.Signals ( on )
+import System.Glib.Signals ( on )
 
 import SetHo.LookupTree ( newLookupTreeview )
 import SetHo.OptionsWidget ( GraphInfo(..), makeOptionsWidget )
@@ -61,7 +63,7 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
 --        mapM_ Gtk.widgetDestroy gws
 --        mapM_ csKillThreads channels
         Gtk.mainQuit
-  _ <- Gtk.onDestroy win killEverything
+  _ <- on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 
   --------------- main widget -----------------
   buttonCommit <- Gtk.buttonNewWithLabel "commit"
@@ -103,11 +105,11 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
     , Gtk.boxChildPacking treeviewExpander := Gtk.PackGrow
     ]
 
-  _ <- Gtk.onClicked buttonCommit $ do
+  _ <- on buttonCommit Gtk.buttonActivated $ do
     val <- getLatestStaged
     commit val
-       
-  _ <- Gtk.onClicked buttonRefresh sendRequest
+
+  _ <- on buttonRefresh Gtk.buttonActivated sendRequest
 
   let pollForNewMessage = do
         mmsg <- userPollForNewMessage

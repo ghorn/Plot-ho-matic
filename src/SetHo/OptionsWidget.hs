@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# Language PackageImports #-}
 
 module SetHo.OptionsWidget
        ( GraphInfo(..)
@@ -7,8 +8,8 @@ module SetHo.OptionsWidget
        ) where
 
 import qualified Control.Concurrent as CC
-import Graphics.UI.Gtk ( AttrOp( (:=) ) )
-import qualified Graphics.UI.Gtk as Gtk
+import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
 import qualified Data.Text as T

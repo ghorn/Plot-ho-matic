@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wall #-}
 --{-# Language ExistentialQuantification #-}
 --{-# Language GADTs #-}
+{-# Language PackageImports #-}
 
 module PlotHo.PlotTypes
        ( Channel(..)
@@ -11,7 +12,7 @@ module PlotHo.PlotTypes
        ) where
 
 import Data.Tree ( Tree )
-import qualified Graphics.UI.Gtk as Gtk
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Data.IORef ( IORef )
 
 data MarkedState =

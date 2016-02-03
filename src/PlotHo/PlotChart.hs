@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PackageImports #-}
 
 module PlotHo.PlotChart
        ( AxisScaling(..)
@@ -11,12 +12,13 @@ import Control.Lens ( (.~) )
 import Data.Default.Class ( def )
 --import qualified Data.Foldable as F
 --import qualified Data.Sequence as S
-import qualified Graphics.UI.Gtk as Gtk
+import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import qualified Graphics.Rendering.Chart as Chart
 import Graphics.Rendering.Chart.Backend.Cairo ( runBackend, defaultEnv )
-import Graphics.Rendering.Cairo hiding (width, height)
-  --( Render, Format(..)
-  --, renderWith, setSourceSurface, withImageSurface )
+import Graphics.Rendering.Cairo
+       ( Render, Format(..)
+       , renderWith, withImageSurface, setSourceSurface, paint
+       )
 
 import PlotHo.PlotTypes ( AxisScaling(..) )
 
@@ -27,8 +29,7 @@ chartGtkUpdateCanvas chart canvas = do
     case maybeWin of
       Nothing -> Gtk.threadsLeave >> return ()
       Just win -> do
-        (width, height) <- Gtk.widgetGetSize canvas
-        regio <- Gtk.regionRectangle $ Gtk.Rectangle 0 0 width height
+        Gtk.Rectangle _ _ width height <- Gtk.widgetGetAllocation canvas
         Gtk.threadsLeave
         let sz = (fromIntegral width,fromIntegral height)
         let render0 :: Render (Chart.PickFn ())
@@ -38,8 +39,8 @@ chartGtkUpdateCanvas chart canvas = do
           _ <- renderWith surface render0
           let render1 = setSourceSurface surface 0 0 >> paint
           Gtk.threadsEnter
-          Gtk.drawWindowBeginPaintRegion win regio
-          _ <- Gtk.renderWithDrawable win render1
+          Gtk.drawWindowBeginPaintRect win (Gtk.Rectangle 0 0 width height)
+          _ <- Gtk.renderWithDrawWindow win render1
           Gtk.drawWindowEndPaint win
           Gtk.threadsLeave
 

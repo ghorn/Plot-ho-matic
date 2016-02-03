@@ -1,9 +1,8 @@
 # from https://github.com/hvr/multi-ghc-travis
 
 env:
- - CABALVER=1.22 GHCVER=7.6.3
  - CABALVER=1.22 GHCVER=7.8.4 # see note about Alex/Happy
- - CABALVER=1.22 GHCVER=7.10.2 # see note about Alex/Happy
+ - CABALVER=1.22 GHCVER=7.10.3 # see note about Alex/Happy
 
 before_install:
  - travis_retry sudo add-apt-repository -y ppa:hvr/ghc

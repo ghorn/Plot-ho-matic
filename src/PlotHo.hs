@@ -176,8 +176,8 @@ historySignalTree axisType = case accessors of
        (reverse myFieldName, Left cname)
        (concatMap (\(getterName, child) -> makeSignalTree' (fromMName getterName:myFieldName) child) children)
       ]
-    makeSignalTree' myFieldName (Right (GAData _ (GASum (GASimpleEnum _ intLens)))) =
-      [Tree.Node (reverse myFieldName, Right (toHistoryGetter (fromIntegral . (^. intLens)))) []]
+    makeSignalTree' myFieldName (Right (GAData _ (GASum enum))) =
+      [Tree.Node (reverse myFieldName, Right (toHistoryGetter (fromIntegral . eToIndex enum))) []]
     makeSignalTree' myFieldName (Left field) =
       [Tree.Node (reverse myFieldName, Right (toHistoryGetter (toDoubleGetter field))) []]
     fromMName (Just x) = x

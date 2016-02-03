@@ -9,6 +9,7 @@ module SetHo.LookupTree
 import Accessors.Dynamic
        ( DTree, DData(..), DConstructor(..), DSimpleEnum(..), DField(..)
        , describeDField, sameDFieldType
+       , denumToString, denumToStringOrMsg, denumSetString
        )
 import Control.Monad ( void, when )
 import Data.Tree ( Tree(..) )
@@ -38,16 +39,17 @@ data SumElem =
   , seDName :: String
   , seUpstreamSum :: DSimpleEnum
   , seStagedSum :: DSimpleEnum
-  } deriving Show
+  , seListStore :: Gtk.ListStore String
+  } -- deriving Show
 
 data ListViewElement =
   LveField FieldElem
   | LveConstructor ConstructorElem
   | LveSum SumElem
-  deriving Show
+--  deriving Show
 
-ddataToTree :: Maybe String -> Either DField DData -> Tree ListViewElement
-ddataToTree name (Left field) = Node (LveField fe) []
+ddataToTree :: Maybe String -> Either DField DData -> IO (Tree ListViewElement)
+ddataToTree name (Left field) = return $ Node (LveField fe) []
   where
     fe =
       FieldElem
@@ -55,25 +57,26 @@ ddataToTree name (Left field) = Node (LveField fe) []
       , feUpstreamField = field
       , feStagedField = field
       }
-ddataToTree name (Right (DData dname (DConstructor cname fields))) =
-  Node (LveConstructor ce) (map (uncurry ddataToTree) fields)
-  where
-    ce =
-      ConstructorElem
-      { ceName = name
-      , ceDName = dname
-      , ceCName = cname
-      }
-ddataToTree name (Right (DData dname (DSum s))) =
-  Node (LveSum se) []
-  where
-    se =
-      SumElem
-      { seName = name
-      , seDName = dname
-      , seUpstreamSum = s
-      , seStagedSum = s
-      }
+ddataToTree name (Right (DData dname (DConstructor cname fields))) = do
+  let ce =
+        ConstructorElem
+        { ceName = name
+        , ceDName = dname
+        , ceCName = cname
+        }
+  children <- mapM (uncurry ddataToTree) fields
+  return $ Node (LveConstructor ce) children
+ddataToTree name (Right (DData dname (DSum s@(DSimpleEnum options _)))) = do
+  listStore <- Gtk.listStoreNew options
+  let se =
+        SumElem
+        { seName = name
+        , seDName = dname
+        , seUpstreamSum = s
+        , seStagedSum = s
+        , seListStore = listStore
+        }
+  return $ Node (LveSum se) []
 
 treeToStagedDData :: Tree ListViewElement -> Either DField DData
 treeToStagedDData (Node (LveField fe) []) = Left (feStagedField fe)
@@ -96,8 +99,8 @@ treeToStagedDData (Node (LveSum se) []) =
   where
     dname = seDName se
     s = seStagedSum se
-treeToStagedDData (Node (LveSum se) _) =
-  error $ "treeToStagedDData: LveSum " ++ show se ++ " has children"
+treeToStagedDData (Node (LveSum _) _) =
+  error $ "treeToStagedDData: LveSum has children"
 
 newLookupTreeview ::
   String
@@ -131,11 +134,11 @@ newLookupTreeview rootName initialValue = do
   rendererUpstreamValue <- Gtk.cellRendererTextNew
   rendererCombo <- Gtk.cellRendererComboNew
 
-  Gtk.cellLayoutPackStart colName    rendererName True
-  Gtk.cellLayoutPackStart colType    rendererType True
+  Gtk.cellLayoutPackStart colName rendererName True
+  Gtk.cellLayoutPackStart colType rendererType True
   Gtk.cellLayoutPackStart colUpstreamValue rendererUpstreamValue True
-  Gtk.cellLayoutPackStart colStagedValue   rendererStagedValue True
-  Gtk.cellLayoutPackStart colCombo    rendererCombo True
+  Gtk.cellLayoutPackStart colStagedValue rendererStagedValue True
+  Gtk.cellLayoutPackStart colCombo rendererCombo True
 
   _ <- Gtk.treeViewAppendColumn treeview colName
   _ <- Gtk.treeViewAppendColumn treeview colType
@@ -163,6 +166,7 @@ newLookupTreeview rootName initialValue = do
   Gtk.cellLayoutSetAttributes colType rendererType treeStore $
         \lve -> [ Gtk.cellText := showType lve ]
 
+  -- upstream
   let showField :: DField -> String
       showField (DDouble x) = printf "%.2g" x
       showField (DFloat x) = printf "%.2g" x
@@ -171,14 +175,9 @@ newLookupTreeview rootName initialValue = do
       showField DSorry = ""
 
       showSum :: DSimpleEnum -> String
-      showSum (DSimpleEnum names k) = case safeIndex names k of
-        Just n -> n
-        Nothing -> "<out of bounds>"
-        where
-          safeIndex (x:_) 0 = Just x
-          safeIndex (_:xs) j = safeIndex xs (j-1)
-          safeIndex [] _ = Nothing
-
+      showSum denum = case denumToString denum of
+        Left msg -> msg
+        Right r -> r
 
   Gtk.cellLayoutSetAttributes colUpstreamValue rendererUpstreamValue treeStore $
     \lve -> case lve of
@@ -192,6 +191,7 @@ newLookupTreeview rootName initialValue = do
                           , Gtk.cellTextEditable := False
                           ]
 
+  -- staged
   Gtk.cellLayoutSetAttributes colStagedValue rendererStagedValue treeStore $
     \lve -> case lve of
       LveField fe ->
@@ -200,7 +200,7 @@ newLookupTreeview rootName initialValue = do
         ]
       LveSum se ->
         [ Gtk.cellText := showSum (seStagedSum se)
-        , Gtk.cellTextEditable := True
+        , Gtk.cellTextEditable := False
         ]
       LveConstructor _ ->
         [ Gtk.cellText := ""
@@ -221,18 +221,11 @@ newLookupTreeview rootName initialValue = do
       modifyField DSorry _ = DSorry
 
       modifySum :: DSimpleEnum -> String -> DSimpleEnum
-      modifySum (DSimpleEnum options k0) txt = DSimpleEnum options k1
-        where
-          k1 = case safeLookup options 0 of
-            Nothing -> k0
-            Just r -> r
-          safeLookup (opt:opts) j
-            | opt == txt = Just j
-            | otherwise = safeLookup opts (j+1)
-          safeLookup [] _ = Nothing
+      modifySum denum txt = case denumSetString denum txt of
+        Left _ -> denum
+        Right r -> r
 
   _ <- on rendererStagedValue Gtk.edited $ \treePath txt -> do
-    let _ = txt :: String
     lve0 <- Gtk.treeStoreGetValue treeStore treePath
     let lve = case lve0 of
           LveField fe -> LveField (fe {feStagedField = modifyField (feStagedField fe) txt})
@@ -255,31 +248,45 @@ newLookupTreeview rootName initialValue = do
 --         , Gtk.cellToggleRadio := True
 --         , Gtk.cellToggleIndicatorSize := 0
 --         ]
---
---  Gtk.cellLayoutSetAttributes colBool rendererBool treeStore $
---        \lve -> toShownBool (lveMarked lve) (lveField lve)
-
--------------   _ <- on rendererBool Gtk.cellToggled $ \pathStr -> do
--------------     let treePath = Gtk.stringToTreePath pathStr
--------------     lve0 <- Gtk.treeStoreGetValue treeStore treePath
--------------     let newMarked :: Bool
--------------         newMarked = not (lveMarked lve0)
--------------         newMutator :: a -> a
--------------         newMutator = case lveField lve0 of
-------------- --          Just (FieldBool f) -> f .~ newMarked
--------------           Just f -> error $ "the new mutator must be a bool mutator, got "
--------------                     ++ describeDField f
--------------           Nothing -> error "the new mutator must be not Nothing"
--------------     Gtk.treeStoreSetValue treeStore treePath
--------------       (lve0 {lveMarked = newMarked, lveStagedValue = newMutator})
---    return ()
 
   -- combo box
-  let toCombo _lve = []
-  Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore toCombo
+  Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore $ \lve ->
+    case lve of
+--      LveField _ -> [ Gtk.cellText := ""
+--                    , Gtk.cellComboHasEntry := False
+--                    ]
+--      LveConstructor _ -> [ Gtk.cellText := ""
+--                          , Gtk.cellComboHasEntry := False
+--                          ]
+      LveSum (SumElem {seStagedSum = denum, seListStore = listStore}) ->
+        [ Gtk.cellComboTextModel := ( listStore
+                                    , Gtk.makeColumnIdString 0 :: Gtk.ColumnId String String
+                                    )
+        , Gtk.cellText := denumToStringOrMsg denum
+        , Gtk.cellMode := Gtk.CellRendererModeActivatable
+--        , Gtk.cellComboHasEntry := False
+        ]
+      _ -> []
+
+--  _ <- on rendererCombo Gtk.editingStarted $ \widget treePath -> do
+--    putStrLn "combo box is being edited"
+
+  _ <- on rendererCombo Gtk.edited $ \treePath (newVal :: String) -> do
+    putStrLn "combo box is being edited"
+    lve0 <- Gtk.treeStoreGetValue treeStore treePath
+    let newLve = case lve0 of
+          LveSum se -> LveSum (se {seStagedSum = case denumSetString (seStagedSum se) newVal of
+                                    Left msg -> error $ "error updating sum elem: " ++ msg
+                                    Right r -> r
+                                  })
+          LveField _ -> error "cell renderer edited on Field"
+          LveConstructor _ -> error "cell renderer edited on Constructor"
+    Gtk.treeStoreSetValue treeStore treePath newLve
+
 
   Gtk.treeStoreClear treeStore
-  Gtk.treeStoreInsertTree treeStore [] 0 (ddataToTree (Just rootName) initialValue)
+  tree <- ddataToTree (Just rootName) initialValue
+  Gtk.treeStoreInsertTree treeStore [] 0 tree
 
 --  let forEach :: (ListViewElement -> IO ListViewElement) -> IO ()
 --      forEach f = Gtk.treeModelForeach treeStore $ \treeIter -> do
@@ -386,9 +393,8 @@ newLookupTreeview rootName initialValue = do
           Nothing -> error "failed looking up old treestore"
           Just r -> return r
 
-        let newTree :: Tree ListViewElement
-            newTree = ddataToTree (Just rootName) newMsg
-            (compatible, mergedTree) = compatibleTrees oldTree newTree
+        newTree <- ddataToTree (Just rootName) newMsg :: IO (Tree ListViewElement)
+        let (compatible, mergedTree) = compatibleTrees oldTree newTree
         if compatible
           then mergeTrees [0] newTree -- merge in place so that the expando doesn't collapse
           else do

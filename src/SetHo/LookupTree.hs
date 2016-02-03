@@ -40,6 +40,7 @@ data SumElem =
   , seUpstreamSum :: DSimpleEnum
   , seStagedSum :: DSimpleEnum
   , seListStore :: Gtk.ListStore String
+--  , seSpinAdjustment :: Gtk.Adjustment
   } -- deriving Show
 
 data ListViewElement =
@@ -68,6 +69,14 @@ ddataToTree name (Right (DData dname (DConstructor cname fields))) = do
   return $ Node (LveConstructor ce) children
 ddataToTree name (Right (DData dname (DSum s@(DSimpleEnum options _)))) = do
   listStore <- Gtk.listStoreNew options
+  Gtk.treeModelSetColumn listStore (Gtk.makeColumnIdString 0) id
+--  let value = 0
+--      lower = 0
+--      upper = realToFrac (length options - 1)
+--      stepIncrement = 1
+--      pageIncrement = 1
+--      pageSize = 0
+--  adjustment <- Gtk.adjustmentNew value lower upper stepIncrement pageIncrement pageSize
   let se =
         SumElem
         { seName = name
@@ -75,6 +84,7 @@ ddataToTree name (Right (DData dname (DSum s@(DSimpleEnum options _)))) = do
         , seUpstreamSum = s
         , seStagedSum = s
         , seListStore = listStore
+--        , seSpinAdjustment = adjustment
         }
   return $ Node (LveSum se) []
 
@@ -121,30 +131,35 @@ newLookupTreeview rootName initialValue = do
   colUpstreamValue <- Gtk.treeViewColumnNew
   colStagedValue <- Gtk.treeViewColumnNew
   colCombo <- Gtk.treeViewColumnNew
+--  colSpin <- Gtk.treeViewColumnNew
 
   Gtk.treeViewColumnSetTitle colName "name"
   Gtk.treeViewColumnSetTitle colType "type"
   Gtk.treeViewColumnSetTitle colUpstreamValue "upstream"
   Gtk.treeViewColumnSetTitle colStagedValue "staged"
   Gtk.treeViewColumnSetTitle colCombo "combo"
+--  Gtk.treeViewColumnSetTitle colSpin "enum"
 
   rendererName <- Gtk.cellRendererTextNew
   rendererType <- Gtk.cellRendererTextNew
   rendererStagedValue <- Gtk.cellRendererTextNew
   rendererUpstreamValue <- Gtk.cellRendererTextNew
   rendererCombo <- Gtk.cellRendererComboNew
+--  rendererSpin <- Gtk.cellRendererSpinNew
 
   Gtk.cellLayoutPackStart colName rendererName True
   Gtk.cellLayoutPackStart colType rendererType True
   Gtk.cellLayoutPackStart colUpstreamValue rendererUpstreamValue True
   Gtk.cellLayoutPackStart colStagedValue rendererStagedValue True
   Gtk.cellLayoutPackStart colCombo rendererCombo True
+--  Gtk.cellLayoutPackStart colSpin rendererSpin True
 
   _ <- Gtk.treeViewAppendColumn treeview colName
   _ <- Gtk.treeViewAppendColumn treeview colType
   _ <- Gtk.treeViewAppendColumn treeview colUpstreamValue
   _ <- Gtk.treeViewAppendColumn treeview colStagedValue
   _ <- Gtk.treeViewAppendColumn treeview colCombo
+--  _ <- Gtk.treeViewAppendColumn treeview colSpin
 
   -- data name
   let showName :: ListViewElement -> String
@@ -233,45 +248,23 @@ newLookupTreeview rootName initialValue = do
           ce@(LveConstructor _) -> ce -- not editible anyway
     Gtk.treeStoreSetValue treeStore treePath lve
 
---  -- bool
---  let toShownBool marked (Just (FieldBool _)) =
---         [ Gtk.cellToggleInconsistent := False
---         , Gtk.cellToggleActive := marked
---         , Gtk.cellToggleActivatable := True
---         , Gtk.cellToggleRadio := True
---         , Gtk.cellToggleIndicatorSize := 12
---         ]
---      toShownBool _ _ =
---         [ Gtk.cellToggleInconsistent := True
---         , Gtk.cellToggleActive := False
---         , Gtk.cellToggleActivatable := False
---         , Gtk.cellToggleRadio := True
---         , Gtk.cellToggleIndicatorSize := 0
---         ]
-
   -- combo box
   Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore $ \lve ->
     case lve of
---      LveField _ -> [ Gtk.cellText := ""
---                    , Gtk.cellComboHasEntry := False
---                    ]
---      LveConstructor _ -> [ Gtk.cellText := ""
---                          , Gtk.cellComboHasEntry := False
---                          ]
       LveSum (SumElem {seStagedSum = denum, seListStore = listStore}) ->
-        [ Gtk.cellComboTextModel := ( listStore
-                                    , Gtk.makeColumnIdString 0 :: Gtk.ColumnId String String
-                                    )
+        [ Gtk.cellMode := Gtk.CellRendererModeActivatable
+        , Gtk.cellComboHasEntry := False
+        , Gtk.cellTextEditable := True
+        , Gtk.cellVisible := True
+        , Gtk.cellSensitive := True
+        , Gtk.cellComboTextModel := (listStore, Gtk.makeColumnIdString 0 :: Gtk.ColumnId String String)
         , Gtk.cellText := denumToStringOrMsg denum
-        , Gtk.cellMode := Gtk.CellRendererModeActivatable
---        , Gtk.cellComboHasEntry := False
         ]
-      _ -> []
+      _ -> [ Gtk.cellMode := Gtk.CellRendererModeInert
+           , Gtk.cellText := ""
+           ]
 
---  _ <- on rendererCombo Gtk.editingStarted $ \widget treePath -> do
---    putStrLn "combo box is being edited"
-
-  _ <- on rendererCombo Gtk.edited $ \treePath (newVal :: String) -> do
+  _ <- on rendererCombo Gtk.edited $ \treePath newVal -> do
     putStrLn "combo box is being edited"
     lve0 <- Gtk.treeStoreGetValue treeStore treePath
     let newLve = case lve0 of
@@ -282,6 +275,43 @@ newLookupTreeview rootName initialValue = do
           LveField _ -> error "cell renderer edited on Field"
           LveConstructor _ -> error "cell renderer edited on Constructor"
     Gtk.treeStoreSetValue treeStore treePath newLve
+
+
+--  -- spin button for enums
+--  Gtk.cellLayoutSetAttributes colSpin rendererSpin treeStore $ \lve ->
+--    case lve of
+----      LveField _ -> [ Gtk.cellText := ""
+----                    , Gtk.cellComboHasEntry := False
+----                    ]
+----      LveConstructor _ -> [ Gtk.cellText := ""
+----                          , Gtk.cellComboHasEntry := False
+----                          ]
+--      LveSum (SumElem {seStagedSum = denum, seSpinAdjustment = adjustment}) ->
+--        [ Gtk.cellRendererSpinAdjustment := adjustment
+----        , Gtk.cellText := denumToStringOrMsg denum
+--        , Gtk.cellMode := Gtk.CellRendererModeActivatable
+----        , Gtk.cellMode := Gtk.CellRendererModeEditable
+--        , Gtk.cellTextEditable := True
+--        , Gtk.cellVisible := True
+--        , Gtk.cellSensitive := True
+----        , Gtk.cellComboHasEntry := False
+--        ]
+--      _ -> []
+--
+--  _ <- on rendererSpin Gtk.editingStarted $ \widget treePath -> do
+--    putStrLn "spin renderer is being edited"
+--
+----  _ <- Gtk.onValueChanged AdjChangedon rendererSpin Gtk.edited $ \treePath (newVal :: String) -> do
+----    putStrLn "combo box is being edited"
+----    lve0 <- Gtk.treeStoreGetValue treeStore treePath
+----    let newLve = case lve0 of
+----          LveSum se -> LveSum (se {seStagedSum = case denumSetString (seStagedSum se) newVal of
+----                                    Left msg -> error $ "error updating sum elem: " ++ msg
+----                                    Right r -> r
+----                                  })
+----          LveField _ -> error "cell renderer edited on Field"
+----          LveConstructor _ -> error "cell renderer edited on Constructor"
+----    Gtk.treeStoreSetValue treeStore treePath newLve
 
 
   Gtk.treeStoreClear treeStore

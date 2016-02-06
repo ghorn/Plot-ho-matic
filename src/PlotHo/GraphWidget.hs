@@ -93,7 +93,7 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   Gtk.set options [ Gtk.containerChild := optionsWidget
                   , Gtk.expanderExpanded := False
                   ]
-
+  _ <- Gtk.afterActivate options redraw
 
   -- the signal selector
   treeview' <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
@@ -101,6 +101,7 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   Gtk.set treeview [ Gtk.containerChild := treeview'
                    , Gtk.expanderExpanded := True
                    ]
+  _ <- Gtk.afterActivate treeview redraw
 
   -- options and signal selector packed in vbox
   vboxOptionsAndSignals <- Gtk.vBoxNew False 4

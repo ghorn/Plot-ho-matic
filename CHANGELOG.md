@@ -58,3 +58,7 @@ remove Generic requirement for some Lookup instances
 * generic-accessors 0.6.0.0 compatibility
 * rewrite settings app to use dynamic data
 * upgrade to GTK3
+
+0.9.0.1
+---
+* workaround issue where toggling expander hides the plot

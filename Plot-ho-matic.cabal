@@ -1,5 +1,5 @@
 name:                Plot-ho-matic
-version:             0.9.0.1
+version:             0.9.0.2
 synopsis:            Real-time line plotter for generic data
 license:             BSD3
 license-file:        LICENSE
@@ -31,7 +31,9 @@ library
                      SetHo.LookupTree
                      SetHo.OptionsWidget
   build-depends:     base >= 4.6.0.0 && < 5
+                     , cereal
                      , containers
+                     , bytestring
                      , lens
                      , data-default-class
                      , glib

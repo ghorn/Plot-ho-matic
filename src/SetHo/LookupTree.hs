@@ -116,12 +116,37 @@ treeToStagedDData (Node (LveSum _) _) =
   error $ "treeToStagedDData: LveSum has children"
 
 
+treeToUpstreamDData :: Tree ListViewElement -> Either DField DData
+treeToUpstreamDData (Node (LveField fe) []) = Left (feUpstreamField fe)
+treeToUpstreamDData (Node (LveField fe) _) =
+  error $ "treeToUpstreamDData: LveField " ++ show fe ++ " has children"
+treeToUpstreamDData (Node (LveConstructor ce) fields) =
+  Right (DData dname (DConstructor cname (map f fields)))
+  where
+    dname = ceDName ce
+    cname = ceCName ce
+
+    getName :: Tree ListViewElement -> Maybe String
+    getName (Node (LveSum se) _) = seName se
+    getName (Node (LveConstructor ce') _) = ceName ce'
+    getName (Node (LveField fe) _) = feName fe
+
+    f x = (getName x, treeToUpstreamDData x)
+treeToUpstreamDData (Node (LveSum se) []) =
+  Right (DData dname (DSum s))
+  where
+    dname = seDName se
+    s = seUpstreamSum se
+treeToUpstreamDData (Node (LveSum _) _) =
+  error $ "treeToUpstreamDData: LveSum has children"
+
+
 newLookupTreeview ::
   String
   -> DTree
   -> IO Bool
   -> (DTree -> IO ())
-  -> IO (Gtk.ScrolledWindow, IO DTree, DTree -> IO (), IO ())
+  -> IO (Gtk.ScrolledWindow, IO DTree, DTree -> IO (), IO (), DTree -> IO ())
 newLookupTreeview rootName initialValue getAutocommit commit = do
   treeStore <- Gtk.treeStoreNew [] :: IO (Gtk.TreeStore ListViewElement)
   treeview <- Gtk.treeViewNewWithModel treeStore :: IO Gtk.TreeView
@@ -345,6 +370,22 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
           Nothing -> error "failed looking up treestore"
           Just r -> return (treeToStagedDData r)
 
+      getLatestUpstream = do
+        mtree <- Gtk.treeStoreLookup treeStore [0]
+        return $ case mtree of
+         Nothing -> Nothing
+         Just r -> Just (treeToUpstreamDData r)
+
+      loadDTree :: DTree -> IO ()
+      loadDTree dtree = do
+        eupstream <- getLatestUpstream
+        Gtk.treeStoreClear treeStore
+        tree <- ddataToTree (Just rootName) dtree
+        Gtk.treeStoreInsertTree treeStore [] 0 tree
+        case eupstream of
+          Nothing -> return ()
+          Just upstream -> receiveNewUpstream upstream
+
       takeLatestUpstream = do
         let takeUpstreamElem :: ListViewElement -> ListViewElement
             takeUpstreamElem (LveField fe) = LveField (fe {feStagedField = feUpstreamField fe})
@@ -431,7 +472,7 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
                  , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
                  ]
 
-  return (scroll, getLatestStaged, receiveNewUpstream, takeLatestUpstream)
+  return (scroll, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadDTree)
 
 mergeSums :: SumElem -> SumElem -> (Bool, SumElem)
 mergeSums oldSum newSum

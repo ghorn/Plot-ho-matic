@@ -1,7 +1,8 @@
-HEAD
+0.9.0.2
 ---
 * Add autocommit toggle
 * Add "take upstream" button
+* Implemented saving/loading files
 
 0.9.0.1
 ---

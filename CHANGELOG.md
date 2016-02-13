@@ -1,24 +1,38 @@
-0.1
+0.9.0.1
 ---
-* Initial release (moved from rawesome repo)
+* workaround issue where toggling expander hides the plot
 
-0.2
+0.9.0.0
 ---
-* Cleaner API
+* generic-accessors 0.6.0.0 compatibility
+* rewrite settings app to use dynamic data
+* upgrade to GTK3
 
-0.3 (Unreleased development version)
+0.8.0.0
 ---
-* switch from Template Haskell to GHC.Generics
+* Switch from Tree ([String], String, Maybe (a -> [[(Double, Double)]]))
+         to   Tree ([String], Either String (a -> [[(Double, Double)]]))
 
-0.4
+0.7.0.1
 ---
-* Performance improvements
-* Safer monadic API
-* More general plottable types
+* Make the list of channels a scrollable thing.
 
-0.4.0.4
+0.7.0.0
 ---
-remove Generic requirement for some Lookup instances
+* Better legend and title.
+
+0.5.0.5
+---
+* Compatability with generic-accessors 0.2
+
+0.5.0.4
+---
+* Performance improvement
+
+0.5.0.1
+---
+* Hierarchical visibility clicking and inconsistent state
+* Merge new signal tree with old
 
 0.5.0.0
 ---
@@ -27,38 +41,24 @@ remove Generic requirement for some Lookup instances
 * Both "history" and custom plot interfaces
 * Unify this package with the dynobud plotter
 
-0.5.0.1
+0.4.0.4
 ---
-* Hierarchical visibility clicking and inconsistent state
-* Merge new signal tree with old
+remove Generic requirement for some Lookup instances
 
-0.5.0.4
+0.4
 ---
-* Performance improvement
+* Performance improvements
+* Safer monadic API
+* More general plottable types
 
-0.5.0.5
+0.3 (Unreleased development version)
 ---
-* Compatability with generic-accessors 0.2
+* switch from Template Haskell to GHC.Generics
 
-0.7.0.0
+0.2
 ---
-* Better legend and title.
+* Cleaner API
 
-0.7.0.1
+0.1
 ---
-* Make the list of channels a scrollable thing.
-
-0.8.0.0
----
-* Switch from Tree ([String], String, Maybe (a -> [[(Double, Double)]]))
-         to   Tree ([String], Either String (a -> [[(Double, Double)]]))
-
-0.9.0.0
----
-* generic-accessors 0.6.0.0 compatibility
-* rewrite settings app to use dynamic data
-* upgrade to GTK3
-
-0.9.0.1
----
-* workaround issue where toggling expander hides the plot
+* Initial release (moved from rawesome repo)

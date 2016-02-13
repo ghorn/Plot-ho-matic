@@ -19,8 +19,6 @@ import Text.Printf ( printf )
 import System.Glib.Signals ( on )
 
 import SetHo.LookupTree ( newLookupTreeview )
-import SetHo.OptionsWidget ( GraphInfo(..), makeOptionsWidget )
-
 
 -- | fire up the the GUI
 runSetter :: String -> DTree -> IO (Maybe DTree) -> IO () -> (DTree -> IO ()) -> IO ()
@@ -67,23 +65,24 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
 
   --------------- main widget -----------------
   buttonCommit <- Gtk.buttonNewWithLabel "commit"
+  buttonAutoCommit <- Gtk.checkButtonNewWithLabel "auto-commit"
   buttonRefresh <- Gtk.buttonNewWithLabel "refresh"
-  Gtk.widgetSetTooltipText buttonCommit (Just "SET ME SET ME GO HEAD DO IT COME ON SET ME")
-
-  -- mvar with all the user input
-  graphInfoMVar <- CC.newMVar GraphInfo { giXScaling = True
-                                        , giXRange = Nothing
-                                        } :: IO (CC.MVar GraphInfo)
+  buttonTakeUpstream <- Gtk.buttonNewWithLabel "take upstream"
+  Gtk.widgetSetTooltipText buttonCommit
+    (Just "SET ME SET ME GO HEAD DO IT COME ON SET ME")
+  Gtk.widgetSetTooltipText buttonAutoCommit
+    (Just "Send settings upstream as soon as any value is changed")
 
   -- the options widget
-  optionsWidget <- makeOptionsWidget graphInfoMVar
   options <- Gtk.expanderNew "options"
-  Gtk.set options [ Gtk.containerChild := optionsWidget
-                  , Gtk.expanderExpanded := False
+  Gtk.set options [ Gtk.containerChild := buttonAutoCommit
+                  , Gtk.expanderExpanded := True
                   ]
 
+
   -- the signal selector
-  (treeview, getLatestStaged, receiveNewValue) <- newLookupTreeview rootName initialValue
+  (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream) <-
+    newLookupTreeview rootName initialValue (Gtk.toggleButtonGetActive buttonAutoCommit) commit
   treeviewExpander <- Gtk.expanderNew "signals"
   Gtk.set treeviewExpander
     [ Gtk.containerChild := treeview
@@ -99,6 +98,8 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
     , Gtk.boxChildPacking buttonCommit := Gtk.PackNatural
     , Gtk.containerChild := buttonRefresh
     , Gtk.boxChildPacking buttonRefresh := Gtk.PackNatural
+    , Gtk.containerChild := buttonTakeUpstream
+    , Gtk.boxChildPacking buttonTakeUpstream := Gtk.PackNatural
     , Gtk.containerChild := options
     , Gtk.boxChildPacking options := Gtk.PackNatural
     , Gtk.containerChild := treeviewExpander
@@ -111,11 +112,13 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
 
   _ <- on buttonRefresh Gtk.buttonActivated sendRequest
 
+  _ <- on buttonTakeUpstream Gtk.buttonActivated takeLatestUpstream
+
   let pollForNewMessage = do
         mmsg <- userPollForNewMessage
         case mmsg of
           Nothing -> return ()
-          Just newVal -> receiveNewValue newVal
+          Just newVal -> receiveNewUpstream newVal
 
   _ <- Gtk.timeoutAddFull (pollForNewMessage >> return True) Gtk.priorityDefault 300
 

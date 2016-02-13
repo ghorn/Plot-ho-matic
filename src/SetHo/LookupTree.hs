@@ -115,11 +115,14 @@ treeToStagedDData (Node (LveSum se) []) =
 treeToStagedDData (Node (LveSum _) _) =
   error $ "treeToStagedDData: LveSum has children"
 
+
 newLookupTreeview ::
   String
   -> DTree
-  -> IO (Gtk.ScrolledWindow, IO DTree, DTree -> IO ())
-newLookupTreeview rootName initialValue = do
+  -> IO Bool
+  -> (DTree -> IO ())
+  -> IO (Gtk.ScrolledWindow, IO DTree, DTree -> IO (), IO ())
+newLookupTreeview rootName initialValue getAutocommit commit = do
   treeStore <- Gtk.treeStoreNew [] :: IO (Gtk.TreeStore ListViewElement)
   treeview <- Gtk.treeViewNewWithModel treeStore :: IO Gtk.TreeView
 
@@ -164,6 +167,7 @@ newLookupTreeview rootName initialValue = do
   _ <- Gtk.treeViewAppendColumn treeview colCombo
 --  _ <- Gtk.treeViewAppendColumn treeview colSpin
 
+  ----------------------------- showing values ------------------------
   -- data name
   let showName :: ListViewElement -> String
       showName (LveSum se) = fromMName $ seName se
@@ -225,32 +229,6 @@ newLookupTreeview rootName initialValue = do
         , Gtk.cellTextEditable := False
         ]
 
-  let modifyField :: DField -> String -> DField
-      modifyField f0@(DDouble _) txt = case readMaybe txt of
-        Nothing -> f0
-        Just x -> DDouble x
-      modifyField f0@(DFloat _) txt = case readMaybe txt of
-        Nothing -> f0
-        Just x -> DFloat x
-      modifyField f0@(DInt _) txt = case readMaybe txt of
-        Nothing -> f0
-        Just x -> DInt x
-      modifyField (DString _) txt = DString txt
-      modifyField DSorry _ = DSorry
-
-      modifySum :: DSimpleEnum -> String -> DSimpleEnum
-      modifySum denum txt = case denumSetString denum txt of
-        Left _ -> denum
-        Right r -> r
-
-  _ <- on rendererStagedValue Gtk.edited $ \treePath txt -> do
-    lve0 <- Gtk.treeStoreGetValue treeStore treePath
-    let lve = case lve0 of
-          LveField fe -> LveField (fe {feStagedField = modifyField (feStagedField fe) txt})
-          LveSum se -> LveSum (se {seStagedSum = modifySum (seStagedSum se) txt})
-          ce@(LveConstructor _) -> ce -- not editible anyway
-    Gtk.treeStoreSetValue treeStore treePath lve
-
   -- combo box
   Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore $ \lve ->
     case lve of
@@ -263,7 +241,8 @@ newLookupTreeview rootName initialValue = do
       _ -> [ Gtk.cellMode := Gtk.CellRendererModeInert
            , Gtk.cellText := ""
            ]
-
+  -- workaround to make sure combo box is displaying correctly, see
+  -- http://stackoverflow.com/questions/35147473/cant-get-gtk2-cellrenderercombo-to-display-anything
   _ <- on rendererCombo Gtk.editingStarted $ \widget treePath -> do
     lve <- Gtk.treeStoreGetValue treeStore treePath
     case lve of
@@ -277,91 +256,7 @@ newLookupTreeview rootName initialValue = do
         Gtk.comboBoxSetActive comboBox active
 
 
-  _ <- on rendererCombo Gtk.edited $ \treePath newVal -> do
-    lve0 <- Gtk.treeStoreGetValue treeStore treePath
-    let newLve = case lve0 of
-          LveSum se -> LveSum (se {seStagedSum = case denumSetString (seStagedSum se) newVal of
-                                    Left msg -> error $ "error updating sum elem: " ++ msg
-                                    Right r -> r
-                                  })
-          LveField _ -> error "cell renderer edited on Field"
-          LveConstructor _ -> error "cell renderer edited on Constructor"
-    Gtk.treeStoreSetValue treeStore treePath newLve
-
-
---  -- spin button for enums
---  Gtk.cellLayoutSetAttributes colSpin rendererSpin treeStore $ \lve ->
---    case lve of
-----      LveField _ -> [ Gtk.cellText := ""
-----                    , Gtk.cellComboHasEntry := False
-----                    ]
-----      LveConstructor _ -> [ Gtk.cellText := ""
-----                          , Gtk.cellComboHasEntry := False
-----                          ]
---      LveSum (SumElem {seStagedSum = denum, seSpinAdjustment = adjustment}) ->
---        [ Gtk.cellRendererSpinAdjustment := adjustment
-----        , Gtk.cellText := denumToStringOrMsg denum
---        , Gtk.cellMode := Gtk.CellRendererModeActivatable
-----        , Gtk.cellMode := Gtk.CellRendererModeEditable
---        , Gtk.cellTextEditable := True
---        , Gtk.cellVisible := True
---        , Gtk.cellSensitive := True
-----        , Gtk.cellComboHasEntry := False
---        ]
---      _ -> []
---
---  _ <- on rendererSpin Gtk.editingStarted $ \widget treePath -> do
---    putStrLn "spin renderer is being edited"
---
-----  _ <- Gtk.onValueChanged AdjChangedon rendererSpin Gtk.edited $ \treePath (newVal :: String) -> do
-----    putStrLn "combo box is being edited"
-----    lve0 <- Gtk.treeStoreGetValue treeStore treePath
-----    let newLve = case lve0 of
-----          LveSum se -> LveSum (se {seStagedSum = case denumSetString (seStagedSum se) newVal of
-----                                    Left msg -> error $ "error updating sum elem: " ++ msg
-----                                    Right r -> r
-----                                  })
-----          LveField _ -> error "cell renderer edited on Field"
-----          LveConstructor _ -> error "cell renderer edited on Constructor"
-----    Gtk.treeStoreSetValue treeStore treePath newLve
-
-
-  Gtk.treeStoreClear treeStore
-  tree <- ddataToTree (Just rootName) initialValue
-  Gtk.treeStoreInsertTree treeStore [] 0 tree
-
---  let forEach :: (ListViewElement -> IO ListViewElement) -> IO ()
---      forEach f = Gtk.treeModelForeach treeStore $ \treeIter -> do
---         treePath <- Gtk.treeModelGetPath treeStore treeIter
---         lve0 <- Gtk.treeStoreGetValue treeStore treePath
---         lve1 <- f lve0
---         Gtk.treeStoreSetValue treeStore treePath lve1
---         return False
-
---  let gotNewValue val = do
---        moldTree <- Gtk.treeStoreLookup treeStore [0]
---        oldTree <- case moldTree of
---          Nothing -> error "failed looking up treestore"
---          Just r -> return r
---
---        -- forEach (\lve -> return (lve {lveUpstreamValue = val}))
---        return ()
-
---  -- on insert or change, rebuild the signal tree
---  _ <- on treeStore Gtk.rowChanged $ \_ changedPath -> do
---    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
---    gotNewValue newMsg
---
---  _ <- on treeStore Gtk.rowInserted $ \_ changedPath -> do
---    newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
---    gotNewValue newMsg
-
-  scroll <- Gtk.scrolledWindowNew Nothing Nothing
-  Gtk.containerAdd scroll treeview
-  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
-                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
-                 ]
-
+  --------------------------- getting/setting the whole tree --------------------------
   let mergeTrees :: Gtk.TreePath -> Tree ListViewElement -> IO ()
       mergeTrees treePath newTree = do
         moldTree <- Gtk.treeStoreLookup treeStore treePath
@@ -428,8 +323,8 @@ newLookupTreeview rootName initialValue = do
                 mergeNthChild 0 newChildren
           (_, Node (LveConstructor _) _) -> assertCompatible False
 
-      receiveNewValue :: DTree -> IO ()
-      receiveNewValue newMsg = do
+      receiveNewUpstream :: DTree -> IO ()
+      receiveNewUpstream newMsg = do
         moldTree <- Gtk.treeStoreLookup treeStore [0]
         oldTree <- case moldTree of
           Nothing -> error "failed looking up old treestore"
@@ -450,7 +345,93 @@ newLookupTreeview rootName initialValue = do
           Nothing -> error "failed looking up treestore"
           Just r -> return (treeToStagedDData r)
 
-  return (scroll, getLatestStaged, receiveNewValue)
+      takeLatestUpstream = do
+        let takeUpstreamElem :: ListViewElement -> ListViewElement
+            takeUpstreamElem (LveField fe) = LveField (fe {feStagedField = feUpstreamField fe})
+            takeUpstreamElem c@(LveConstructor _) = c
+            takeUpstreamElem (LveSum se) = LveSum (se {seStagedSum = seUpstreamSum se})
+
+            takeUpstream :: Gtk.TreeIter -> IO ()
+            takeUpstream iter = do
+              -- change the value at the current iter
+              path <- Gtk.treeModelGetPath treeStore iter
+              _ <- Gtk.treeStoreChange treeStore path takeUpstreamElem
+
+              -- if there are children, change their values
+              mchildren <- Gtk.treeModelIterChildren treeStore iter
+              case mchildren of
+                Just childIter -> takeUpstream childIter
+                Nothing -> return ()
+
+              -- if there are siblings, change their values
+              msiblings <- Gtk.treeModelIterNext treeStore iter
+              case msiblings of
+                Just siblingIter -> takeUpstream siblingIter
+                Nothing -> return ()
+
+        miter <- Gtk.treeModelGetIterFirst treeStore
+        case miter of
+          Nothing -> return ()
+          Just root -> takeUpstream root
+
+
+  -------------------------- editing values ----------------------
+  let sendDataIfAutocommitIsOn = do
+        autoCommit <- getAutocommit
+        when autoCommit (getLatestStaged >>= commit)
+
+      modifyField :: DField -> String -> DField
+      modifyField f0@(DDouble _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DDouble x
+      modifyField f0@(DFloat _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DFloat x
+      modifyField f0@(DInt _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DInt x
+      modifyField (DString _) txt = DString txt
+      modifyField DSorry _ = DSorry
+
+      modifySum :: DSimpleEnum -> String -> DSimpleEnum
+      modifySum denum txt = case denumSetString denum txt of
+        Left _ -> denum
+        Right r -> r
+
+  _ <- on rendererStagedValue Gtk.edited $ \treePath txt -> do
+    lve0 <- Gtk.treeStoreGetValue treeStore treePath
+    let lve = case lve0 of
+          LveField fe -> LveField (fe {feStagedField = modifyField (feStagedField fe) txt})
+          LveSum se -> LveSum (se {seStagedSum = modifySum (seStagedSum se) txt})
+          ce@(LveConstructor _) -> ce -- not editible anyway
+    Gtk.treeStoreSetValue treeStore treePath lve
+    sendDataIfAutocommitIsOn
+
+
+  _ <- on rendererCombo Gtk.edited $ \treePath newVal -> do
+    lve0 <- Gtk.treeStoreGetValue treeStore treePath
+    let newLve = case lve0 of
+          LveSum se -> LveSum (se {seStagedSum = case denumSetString (seStagedSum se) newVal of
+                                    Left msg -> error $ "error updating sum elem: " ++ msg
+                                    Right r -> r
+                                  })
+          LveField _ -> error "cell renderer edited on Field"
+          LveConstructor _ -> error "cell renderer edited on Constructor"
+    Gtk.treeStoreSetValue treeStore treePath newLve
+    sendDataIfAutocommitIsOn
+
+
+  Gtk.treeStoreClear treeStore
+  tree <- ddataToTree (Just rootName) initialValue
+  Gtk.treeStoreInsertTree treeStore [] 0 tree
+
+  scroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.containerAdd scroll treeview
+  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
+                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+                 ]
+
+  return (scroll, getLatestStaged, receiveNewUpstream, takeLatestUpstream)
 
 mergeSums :: SumElem -> SumElem -> (Bool, SumElem)
 mergeSums oldSum newSum

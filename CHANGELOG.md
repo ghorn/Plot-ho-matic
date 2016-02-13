@@ -1,3 +1,8 @@
+HEAD
+---
+* Add autocommit toggle
+* Add "take upstream" button
+
 0.9.0.1
 ---
 * workaround issue where toggling expander hides the plot

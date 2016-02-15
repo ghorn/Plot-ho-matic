@@ -1,4 +1,4 @@
-HEAD
+0.9.0.3
 ---
 * initial settings selector box is big enough to see some fields
 * combo box and text entry now share "staged" column

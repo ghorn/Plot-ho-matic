@@ -24,25 +24,25 @@ import PlotHo.PlotTypes ( AxisScaling(..) )
 
 chartGtkUpdateCanvas :: Chart.Renderable () -> Gtk.DrawingArea  -> IO ()
 chartGtkUpdateCanvas chart canvas = do
-    Gtk.threadsEnter
-    maybeWin <- Gtk.widgetGetWindow canvas
-    case maybeWin of
-      Nothing -> Gtk.threadsLeave >> return ()
-      Just win -> do
-        Gtk.Rectangle _ _ width height <- Gtk.widgetGetAllocation canvas
-        Gtk.threadsLeave
-        let sz = (fromIntegral width,fromIntegral height)
-        let render0 :: Render (Chart.PickFn ())
-            render0 = runBackend (defaultEnv Chart.bitmapAlignmentFns) (Chart.render chart sz)
+  Gtk.threadsEnter
+  maybeWin <- Gtk.widgetGetWindow canvas
+  case maybeWin of
+    Nothing -> Gtk.threadsLeave >> return ()
+    Just win -> do
+      Gtk.Rectangle _ _ width height <- Gtk.widgetGetAllocation canvas
+      Gtk.threadsLeave
+      let sz = (fromIntegral width,fromIntegral height)
+      let render0 :: Render (Chart.PickFn ())
+          render0 = runBackend (defaultEnv Chart.bitmapAlignmentFns) (Chart.render chart sz)
 
-        withImageSurface FormatARGB32 width height $ \surface -> do
-          _ <- renderWith surface render0
-          let render1 = setSourceSurface surface 0 0 >> paint
-          Gtk.threadsEnter
-          Gtk.drawWindowBeginPaintRect win (Gtk.Rectangle 0 0 width height)
-          _ <- Gtk.renderWithDrawWindow win render1
-          Gtk.drawWindowEndPaint win
-          Gtk.threadsLeave
+      withImageSurface FormatARGB32 width height $ \surface -> do
+        _ <- renderWith surface render0
+        let render1 = setSourceSurface surface 0 0 >> paint
+        Gtk.threadsEnter
+        Gtk.drawWindowBeginPaintRect win (Gtk.Rectangle 0 0 width height)
+        _ <- Gtk.renderWithDrawWindow win render1
+        Gtk.drawWindowEndPaint win
+        Gtk.threadsLeave
 
 displayChart :: forall a
                 . (Chart.PlotValue a, Show a, RealFloat a)

@@ -184,6 +184,10 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   _ <- Gtk.treeViewAppendColumn treeview colUpstreamValue
   _ <- Gtk.treeViewAppendColumn treeview colStagedValue
 
+  -- add an extra dummy column at the end so that the staged value doesn't
+  -- expand to the right
+  _ <- Gtk.treeViewColumnNew >>= Gtk.treeViewAppendColumn treeview
+
   ----------------------------- showing values ------------------------
   -- data name
   let showName :: ListViewElement -> String

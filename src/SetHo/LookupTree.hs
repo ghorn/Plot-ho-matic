@@ -161,14 +161,12 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   colType <- Gtk.treeViewColumnNew
   colUpstreamValue <- Gtk.treeViewColumnNew
   colStagedValue <- Gtk.treeViewColumnNew
-  colCombo <- Gtk.treeViewColumnNew
 --  colSpin <- Gtk.treeViewColumnNew
 
   Gtk.treeViewColumnSetTitle colName "name"
   Gtk.treeViewColumnSetTitle colType "type"
   Gtk.treeViewColumnSetTitle colUpstreamValue "upstream"
   Gtk.treeViewColumnSetTitle colStagedValue "staged"
-  Gtk.treeViewColumnSetTitle colCombo "combo"
 --  Gtk.treeViewColumnSetTitle colSpin "enum"
 
   rendererName <- Gtk.cellRendererTextNew
@@ -178,18 +176,17 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   rendererCombo <- Gtk.cellRendererComboNew
 --  rendererSpin <- Gtk.cellRendererSpinNew
 
-  Gtk.cellLayoutPackStart colName rendererName True
-  Gtk.cellLayoutPackStart colType rendererType True
-  Gtk.cellLayoutPackStart colUpstreamValue rendererUpstreamValue True
-  Gtk.cellLayoutPackStart colStagedValue rendererStagedValue True
-  Gtk.cellLayoutPackStart colCombo rendererCombo True
+  Gtk.treeViewColumnPackStart colName rendererName True
+  Gtk.treeViewColumnPackStart colType rendererType True
+  Gtk.treeViewColumnPackStart colUpstreamValue rendererUpstreamValue True
+  Gtk.treeViewColumnPackStart colStagedValue rendererStagedValue True
+  Gtk.treeViewColumnPackStart colStagedValue rendererCombo True
 --  Gtk.cellLayoutPackStart colSpin rendererSpin True
 
   _ <- Gtk.treeViewAppendColumn treeview colName
   _ <- Gtk.treeViewAppendColumn treeview colType
   _ <- Gtk.treeViewAppendColumn treeview colUpstreamValue
   _ <- Gtk.treeViewAppendColumn treeview colStagedValue
-  _ <- Gtk.treeViewAppendColumn treeview colCombo
 --  _ <- Gtk.treeViewAppendColumn treeview colSpin
 
   ----------------------------- showing values ------------------------
@@ -226,6 +223,7 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
         Left msg -> msg
         Right r -> r
 
+  -- upstream
   Gtk.cellLayoutSetAttributes colUpstreamValue rendererUpstreamValue treeStore $
     \lve -> case lve of
       LveField fe -> [ Gtk.cellText := showField (feUpstreamField fe)
@@ -242,29 +240,30 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   Gtk.cellLayoutSetAttributes colStagedValue rendererStagedValue treeStore $
     \lve -> case lve of
       LveField fe ->
-        [ Gtk.cellText := showField (feStagedField fe)
+        [ Gtk.cellVisible := True
+        , Gtk.cellText := showField (feStagedField fe)
         , Gtk.cellTextEditable := True
         ]
-      LveSum se ->
-        [ Gtk.cellText := showSum (seStagedSum se)
-        , Gtk.cellTextEditable := False
+      LveSum _ ->
+        [ Gtk.cellVisible := False
         ]
       LveConstructor _ ->
-        [ Gtk.cellText := ""
+        [ Gtk.cellVisible := False
         , Gtk.cellTextEditable := False
         ]
 
   -- combo box
-  Gtk.cellLayoutSetAttributes colCombo rendererCombo treeStore $ \lve ->
+  Gtk.cellLayoutSetAttributes colStagedValue rendererCombo treeStore $ \lve ->
     case lve of
       LveSum (SumElem {seStagedSum = denum, seListStore = listStore}) ->
-        [ Gtk.cellComboHasEntry := False
+        [ Gtk.cellVisible := True
+        , Gtk.cellComboHasEntry := False
         , Gtk.cellTextEditable := True
         , Gtk.cellComboTextModel := (listStore, Gtk.makeColumnIdString 0 :: Gtk.ColumnId String String)
         , Gtk.cellText := denumToStringOrMsg denum
         ]
       _ -> [ Gtk.cellMode := Gtk.CellRendererModeInert
-           , Gtk.cellText := ""
+           , Gtk.cellVisible := False
            ]
   -- workaround to make sure combo box is displaying correctly, see
   -- http://stackoverflow.com/questions/35147473/cant-get-gtk2-cellrenderercombo-to-display-anything

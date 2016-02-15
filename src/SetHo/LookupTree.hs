@@ -161,33 +161,28 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   colType <- Gtk.treeViewColumnNew
   colUpstreamValue <- Gtk.treeViewColumnNew
   colStagedValue <- Gtk.treeViewColumnNew
---  colSpin <- Gtk.treeViewColumnNew
 
   Gtk.treeViewColumnSetTitle colName "name"
   Gtk.treeViewColumnSetTitle colType "type"
   Gtk.treeViewColumnSetTitle colUpstreamValue "upstream"
   Gtk.treeViewColumnSetTitle colStagedValue "staged"
---  Gtk.treeViewColumnSetTitle colSpin "enum"
 
   rendererName <- Gtk.cellRendererTextNew
   rendererType <- Gtk.cellRendererTextNew
   rendererStagedValue <- Gtk.cellRendererTextNew
   rendererUpstreamValue <- Gtk.cellRendererTextNew
   rendererCombo <- Gtk.cellRendererComboNew
---  rendererSpin <- Gtk.cellRendererSpinNew
 
   Gtk.treeViewColumnPackStart colName rendererName True
   Gtk.treeViewColumnPackStart colType rendererType True
   Gtk.treeViewColumnPackStart colUpstreamValue rendererUpstreamValue True
   Gtk.treeViewColumnPackStart colStagedValue rendererStagedValue True
   Gtk.treeViewColumnPackStart colStagedValue rendererCombo True
---  Gtk.cellLayoutPackStart colSpin rendererSpin True
 
   _ <- Gtk.treeViewAppendColumn treeview colName
   _ <- Gtk.treeViewAppendColumn treeview colType
   _ <- Gtk.treeViewAppendColumn treeview colUpstreamValue
   _ <- Gtk.treeViewAppendColumn treeview colStagedValue
---  _ <- Gtk.treeViewAppendColumn treeview colSpin
 
   ----------------------------- showing values ------------------------
   -- data name

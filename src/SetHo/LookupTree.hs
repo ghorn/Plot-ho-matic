@@ -471,6 +471,9 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
                  , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
                  ]
+  -- 20 pixels width: other stuff is certainly larger than that so it'll never get that small
+  -- 110 pixels height: enough for the user to see the selector window and a child or two.
+  _ <- Gtk.widgetSetSizeRequest scroll 20 110
 
   return (scroll, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadDTree)
 

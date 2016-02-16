@@ -15,6 +15,7 @@ import Data.List ( intercalate )
 import qualified Data.Map as M
 import Data.Maybe ( isNothing, fromJust )
 import qualified Data.Tree as Tree
+import qualified Graphics.Rendering.Cairo as Cairo
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
@@ -22,7 +23,7 @@ import Text.Read ( readMaybe )
 import qualified Data.Text as T
 import qualified Graphics.Rendering.Chart as Chart
 
-import PlotHo.PlotChart ( AxisScaling(..), displayChart, chartGtkUpdateCanvas )
+import PlotHo.PlotChart ( AxisScaling(..), displayChart, chartGtkUpdateCanvas' )
 import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..), MarkedState(..) )
 
 -- make a new graph window
@@ -49,43 +50,91 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
                                         , giTitle = Nothing
                                         } :: IO (CC.MVar (GraphInfo a))
 
-  let makeRenderable :: IO (Chart.Renderable ())
-      makeRenderable = do
+  let -- turn latest signals into a Chart render
+      prepareRenderFromLatestData :: IO (Chart.RectSize -> Cairo.Render ())
+      prepareRenderFromLatestData = do
+        -- get the latest signals
         gi <- CC.readMVar graphInfoMVar
         size <- Gtk.listStoreGetSize msgStore
+        namePcs <-
+          if size == 0
+          then return []
+          else do datalog <- Gtk.listStoreGetValue msgStore 0
+                  return $ map (fmap (\g -> g datalog)) (giGetters gi)
+                    :: IO [(String, [[(Double,Double)]])]
+        return $ displayChart
+          (giXScaling gi, giYScaling gi)
+          (giXRange gi, giYRange gi)
+          (giTitle gi)
+          namePcs
 
-        namePcs <- if size == 0
-                   then return []
-                   else do
-                     datalog <- Gtk.listStoreGetValue msgStore 0
-                     let ret :: [(String, [[(Double,Double)]])]
-                         ret = map (fmap (\g -> g datalog)) (giGetters gi)
-                     return ret
-        return $ displayChart (giXScaling gi, giYScaling gi) (giXRange gi, giYRange gi) (giTitle gi) namePcs
 
-  -- chart drawing area
+
+
+  redrawMVar <- CC.newMVar False
+--
+--      drawQueuerThread = do
+--        someoneWantsRedraw <- CC.takeMVar redrawMVar
+--        if someoneWantsRedraw <- Gtk.widgetQueueDraw chartCanvas
+--        
+--  Gtk.timeoutAddFull drawQueuerThread 50
+
+      -- if anyone external wants to redraw, they do it by adding a queue draw
+  let redraw = CC.swapMVar_ redrawMVar True
+        
+      
+--  let redraw = Gtk.widgetQueueDraw chartCanvas
+
+
+
+  
+  -- new chart drawing area
   chartCanvas <- Gtk.drawingAreaNew
   _ <- Gtk.widgetSetSizeRequest chartCanvas 250 250
 
-  latestRenderableMVar <- CC.newEmptyMVar
+  CC.latestOneToRender
+  latestSurfaceMVar <- CC.newEmptyMVar
 
-  let redraw :: IO ()
-      redraw = do
-        renderable <- makeRenderable
-        maybeLatestRenderable <- CC.tryTakeMVar latestRenderableMVar
-        case maybeLatestRenderable of
-         -- the other action is still waiting
-         Just _ -> CC.putMVar latestRenderableMVar renderable
-         -- there is no action waiting, post the action
-         Nothing -> do CC.putMVar latestRenderableMVar renderable
-                       void $ flip Gtk.idleAdd Gtk.priorityDefaultIdle $ do
-                         -- this might not be the same one if the messages have accumulated
-                         latestRenderable <- CC.takeMVar latestRenderableMVar
-                         chartGtkUpdateCanvas latestRenderable chartCanvas
-                         return False -- we're done now, don't call this again
+  let makeNewSurfaceAndRedraw width height renderable = do
+        
+        let redrawTheThing = do
+              render <- prepareRenderFromLatestData
+              swapMVar latestSurfaceMVar
+              return ()
 
-  _ <- on chartCanvas Gtk.exposeEvent $ liftIO (redraw >> return True)
+        needsRedraw <- CC.takeMVar needsRedrawMVar
 
+        
+        if needsRedraw
+          then generateNewsurface
+          else
+
+  let handleDraw :: Cairo.Surface -> Cairo.Render ()
+      handleDraw targetSurface = do
+        Gtk.Rectangle _ _ width height <- liftIO $ Gtk.widgetGetAllocation chartCanvas
+
+        -- handleDraw always immediately takes the last drawn surface and draws it
+        -- this is just a copy and very efficient
+        ((lastWidth, lastHeight), lastSurface) <- CC.takeMVar latestSurfaceMVar
+        Cairo.setSourceSurface latestSurface 0 0
+        paint
+
+        -- then we determine if we actually need to re-generate a new surface
+        needRedraw <- CC.takeMVar redrawMVar
+        if needRedraw
+           -- if someone has requested a redraw
+          then do render <- liftIO prepareRenderFromLatestData
+                  CC.forkIO (makeNewSurfaceAndRedraw width height)
+          else
+
+        
+        needRedraw <- CC.takeMVar needRedrawMVar
+
+
+
+        Cairo.withTargetSurface (chartGtkUpdateCanvas' allocation render)
+
+  _ <- on chartCanvas Gtk.draw (Cairo.withTargetSurface handleDraw)
 
   -- the options widget
   optionsWidget <- makeOptionsWidget graphInfoMVar redraw
@@ -93,7 +142,6 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   Gtk.set options [ Gtk.containerChild := optionsWidget
                   , Gtk.expanderExpanded := False
                   ]
-  _ <- Gtk.afterActivate options redraw
 
   -- the signal selector
   treeview' <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
@@ -101,7 +149,6 @@ newGraph onButton channame sameSignalTree forestFromMeta msgStore = do
   Gtk.set treeview [ Gtk.containerChild := treeview'
                    , Gtk.expanderExpanded := True
                    ]
-  _ <- Gtk.afterActivate treeview redraw
 
   -- options and signal selector packed in vbox
   vboxOptionsAndSignals <- Gtk.vBoxNew False 4
@@ -361,24 +408,28 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
           IORef.writeIORef oldMetaRef (Just newMeta)
           rebuildSignalTree (forestFromMeta newMeta)
 
-  -- on insert or change, rebuild the signal tree
+  -- on new message (insert or change), rebuild the signal tree and redraw
   _ <- on msgStore Gtk.rowChanged $ \_ changedPath -> do
     newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
-    maybeRebuildSignalTree newMsg >> redraw
+    maybeRebuildSignalTree newMsg
+    redraw
   _ <- on msgStore Gtk.rowInserted $ \_ changedPath -> do
     newMsg <- Gtk.listStoreGetValue msgStore (Gtk.listStoreIterToIndex changedPath)
-    maybeRebuildSignalTree newMsg >> redraw
+    maybeRebuildSignalTree newMsg
+    redraw
 
   -- rebuild the signal tree right now if it exists
   size <- Gtk.listStoreGetSize msgStore
   when (size > 0) $ do
     newMsg <- Gtk.listStoreGetValue msgStore 0
-    maybeRebuildSignalTree newMsg >> redraw
+    maybeRebuildSignalTree newMsg
+    redraw
 
   -- for debugging
   onButton $ do
     newMsg <- Gtk.listStoreGetValue msgStore 0
-    rebuildSignalTree (forestFromMeta newMsg) >> redraw
+    rebuildSignalTree (forestFromMeta newMsg)
+    redraw
 
 
   scroll <- Gtk.scrolledWindowNew Nothing Nothing

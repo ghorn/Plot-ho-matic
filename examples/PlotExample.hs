@@ -61,4 +61,4 @@ main = do
     addHistoryChannel "Foo (XAxisTime)"   XAxisTime   $ channelWriter 0 50000 incrementFoo foo0
     addHistoryChannel "Bar (XAxisCount)"  XAxisCount  $ channelWriter 0 60000 incrementBar bar0
     addHistoryChannel "Foo (XAxisTime0)"  XAxisTime0  $ channelWriter 0 50000 incrementFoo foo0
-    addHistoryChannel "Bar (XAxisCount0)" XAxisCount0 $ channelWriter 0 60000 incrementBar bar0
+    addHistoryChannel "Bar (XAxisCount0)" XAxisCount0 $ channelWriter 0 600000 incrementBar bar0

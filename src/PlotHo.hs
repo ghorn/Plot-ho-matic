@@ -227,7 +227,7 @@ newHistoryChannel ::
 newHistoryChannel name xaxisType = do
   time0 <- getCurrentTime >>= IORef.newIORef
   counter <- IORef.newIORef 0
-  maxHist <- IORef.newIORef 200
+  maxHist <- IORef.newIORef 500
 
   msgStore <- Gtk.listStoreNew []
 
@@ -411,6 +411,8 @@ runPlotter plotterMonad = do
     , Gtk.containerChild := scroll
     ]
 
+  _ <- Gtk.widgetSetSizeRequest vbox 20 200
+
   -- add widget to window and show
   _ <- Gtk.set win [ Gtk.containerChild := vbox ]
   Gtk.widgetShowAll win
@@ -457,7 +459,7 @@ newChannelWidget channel graphWindowsToBeKilled = do
   Gtk.set entryEntry [ Gtk.entryEditable := True
                      , Gtk.widgetSensitive := True
                      ]
-  Gtk.entrySetText entryEntry "200"
+  Gtk.entrySetText entryEntry "500"
   let updateMaxHistory = do
         txt <- Gtk.get entryEntry Gtk.entryText
         let reset = Gtk.entrySetText entryEntry "(max)"

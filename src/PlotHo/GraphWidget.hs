@@ -119,8 +119,8 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
 
         -- At this point the render worker will immediately start the next render if needed.
         -- This could cause us to draw at an unneccesarily high rate which would could
-        -- overload the system. So we only draw at maximum rate given by @maxDrawRate@.
-        -- If we are already slower than @maxDrawRate@ we don't sleep,
+        -- overload the system. So we only draw at maximum rate given by 'maxDrawRate'.
+        -- If we are already slower than 'maxDrawRate' we don't sleep,
         -- we just update as quickly as possible.
         renderFinishTime <- getCurrentTime
         let renderTime :: Double

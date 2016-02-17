@@ -36,18 +36,18 @@ import PlotHo.GraphWidget ( newGraph )
 import PlotHo.Plotter ( Plotter, ChannelStuff(..), tell )
 import PlotHo.PlotTypes ( Channel(..), PlotterOptions(..) )
 
--- | Simplified time-series channel which passes a "send message" function to a worker and forks it using 'forkIO'.
+-- | Simplified time-series channel which passes a "send message" function to a worker and forks it using 'Control.Concurrent.forkIO'.
 -- The plotter will plot a time series of messages sent by the worker.
 -- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
 -- You will have to recompile the plotter if the types change.
--- If you don't want to do this, use the more generic "addChannel" interface
--- and use a type like a Tree to represent your data, or use the "addHistoryChannel'" function.
+-- If you don't want to do this, use the more generic 'addChannel' interface
+-- and use a type like a Tree to represent your data, or use the 'addHistoryChannel' function.
 addHistoryChannel ::
   Lookup a
   => PlotterOptions -- ^ some options
   -> String -- ^ channel name
   -> XAxisType -- ^ what to use for the X axis
-  -> ((a -> Bool -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
+  -> ((a -> Bool -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'Control.Concurrent.forkIO'
   -> Plotter ()
 addHistoryChannel plotterOptions name xaxisType action = do
   (chan, newMessage) <- liftIO $ newHistoryChannel name xaxisType
@@ -174,10 +174,10 @@ historySignalTree axisType = case accessors of
           (_, k0', _) S.:< _ -> realToFrac k0'
           S.EmptyL -> 0
 
--- History channel which automatically generates the signal tree for you
+-- | History channel which automatically generates the signal tree for you
 -- based on the Lookup instance. You have to recompile the plotter if
 -- the types change.
--- This is the internal part which should be wrapped by addHistoryChannel.
+-- This is the internal part which should be wrapped by 'addHistoryChannel'.
 newHistoryChannel ::
   forall a
   . Lookup a
@@ -232,7 +232,7 @@ newHistoryChannel name xaxisType = do
 type Meta = [Tree ([String], Either String Int)]
 data History' = History' Bool (S.Seq (Double, Vector Double)) Meta
 
--- History channel which does NOT automatically generates the signal tree for you.
+-- | History channel which does NOT automatically generates the signal tree for you.
 -- This is the internal part which should be wrapped by addHistoryChannel'.
 newHistoryChannel' ::
   String -> IO (Channel History', Double -> Vector Double -> Maybe Meta -> IO ())

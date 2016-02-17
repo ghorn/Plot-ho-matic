@@ -20,7 +20,7 @@ import qualified GHC.Stats
 import Control.Applicative ( Applicative(..), liftA2 )
 import Control.Lens ( (^.) )
 import Data.Monoid ( mappend, mempty )
-import Control.Monad ( when )
+import Control.Monad ( void, when )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
 import qualified Data.Foldable as F
@@ -42,7 +42,16 @@ import qualified Data.Sequence as S
 import Accessors
 
 import PlotHo.PlotTypes ( Channel(..) )
-import PlotHo.GraphWidget ( newGraph )
+import PlotHo.GraphWidget ( PlotterOptions(..), newGraph )
+
+-- global options
+-- TODO(greg): make this settable by user
+plotterOptions :: PlotterOptions
+plotterOptions =
+  PlotterOptions
+  { maxDrawRate = 40
+  }
+
 
 -- | add channels to this, then run it with 'runPlotter'
 newtype Plotter a = Plotter { unPlotter :: IO (a, [ChannelStuff]) } deriving Functor
@@ -227,7 +236,7 @@ newHistoryChannel ::
 newHistoryChannel name xaxisType = do
   time0 <- getCurrentTime >>= IORef.newIORef
   counter <- IORef.newIORef 0
-  maxHist <- IORef.newIORef 200
+  maxHist <- IORef.newIORef 500
 
   msgStore <- Gtk.listStoreNew []
 
@@ -340,14 +349,15 @@ runPlotter :: Plotter () -> IO ()
 runPlotter plotterMonad = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
-  _ <- Gtk.initGUI
-  _ <- Gtk.timeoutAddFull (CC.yield >> return True) Gtk.priorityDefault 50
+  void Gtk.initGUI
+  void $ Gtk.timeoutAddFull (CC.yield >> return True) Gtk.priorityDefault 50
 
   -- start the main window
   win <- Gtk.windowNew
-  _ <- Gtk.set win [ Gtk.containerBorderWidth := 8
-                   , Gtk.windowTitle := "Plot-ho-matic"
-                   ]
+  void $ Gtk.set win
+    [ Gtk.containerBorderWidth := 8
+    , Gtk.windowTitle := "Plot-ho-matic"
+    ]
 
   statsLabel <- Gtk.labelNew (Nothing :: Maybe String)
   let statsWorker = do
@@ -370,8 +380,6 @@ runPlotter plotterMonad = do
 
   chanWidgets <- mapM (\x -> x graphWindowsToBeKilled) windows
 
-
-
   let killEverything :: IO ()
       killEverything = do
         CC.killThread statsThread
@@ -379,13 +387,13 @@ runPlotter plotterMonad = do
         mapM_ Gtk.widgetDestroy gws
         mapM_ csKillThreads channels
         Gtk.mainQuit
-  _ <- on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
+  void $ on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 
   --------------- main widget -----------------
   -- button to clear history
   buttonDoNothing <- Gtk.buttonNewWithLabel "this button does absolutely nothing"
-  _ <- on buttonDoNothing Gtk.buttonActivated $
-       putStrLn "seriously, it does nothing"
+  void $ on buttonDoNothing Gtk.buttonActivated $
+    putStrLn "seriously, it does nothing"
 
   -- box to hold list of channels
   channelBox <- Gtk.vBoxNew False 4
@@ -411,15 +419,16 @@ runPlotter plotterMonad = do
     , Gtk.containerChild := scroll
     ]
 
+  void $ Gtk.widgetSetSizeRequest vbox 20 200
+
   -- add widget to window and show
-  _ <- Gtk.set win [ Gtk.containerChild := vbox ]
+  void $ Gtk.set win [ Gtk.containerChild := vbox ]
   Gtk.widgetShowAll win
   Gtk.mainGUI
 
 
 -- the list of channels
-newChannelWidget :: Channel a
-                    -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
+newChannelWidget :: Channel a -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
 newChannelWidget channel graphWindowsToBeKilled = do
   vbox <- Gtk.vBoxNew False 4
 
@@ -430,7 +439,7 @@ newChannelWidget channel graphWindowsToBeKilled = do
 
   -- button to clear history
   buttonAlsoDoNothing <- Gtk.buttonNewWithLabel "also do nothing"
---  _ <- Gtk.onClicked buttonAlsoDoNothing $ do
+--  void $ Gtk.onClicked buttonAlsoDoNothing $ do
 --    putStrLn "i promise, nothing happens"
 --    -- CC.modifyMVar_ logData (const (return S.empty))
 --    return ()
@@ -438,66 +447,69 @@ newChannelWidget channel graphWindowsToBeKilled = do
 
   -- button to make a new graph
   buttonNew <- Gtk.buttonNewWithLabel "new graph"
-  _ <- on buttonNew Gtk.buttonActivated $ do
-    graphWin <- newGraph
-                triggerYo
-                (chanName channel)
-                (chanSameSignalTree channel)
-                (chanToSignalTree channel)
-                (chanMsgStore channel)
+  void $ on buttonNew Gtk.buttonActivated $ do
+    graphWin <-
+      newGraph plotterOptions triggerYo (chanName channel)
+      (chanSameSignalTree channel)
+      (chanToSignalTree channel)
+      (chanMsgStore channel)
 
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
 
 
   -- entry to set history length
-  entryAndLabel <- Gtk.hBoxNew False 4
-  entryLabel <- Gtk.vBoxNew False 4 >>= labeledWidget "max history:"
-  entryEntry <- Gtk.entryNew
-  Gtk.set entryEntry [ Gtk.entryEditable := True
-                     , Gtk.widgetSensitive := True
-                     ]
-  Gtk.entrySetText entryEntry "200"
+  maxHistoryEntryAndLabel <- Gtk.hBoxNew False 4
+  maxHistoryLabel <- Gtk.vBoxNew False 4 >>= labeledWidget "max history:"
+  maxHistoryEntry <- Gtk.entryNew
+  Gtk.set maxHistoryEntry
+    [ Gtk.entryEditable := True
+    , Gtk.widgetSensitive := True
+    ]
+  Gtk.entrySetText maxHistoryEntry "500"
   let updateMaxHistory = do
-        txt <- Gtk.get entryEntry Gtk.entryText
-        let reset = Gtk.entrySetText entryEntry "(max)"
+        txt <- Gtk.get maxHistoryEntry Gtk.entryText
+        let reset = Gtk.entrySetText maxHistoryEntry "(max)"
         case readMaybe txt :: Maybe Int of
           Nothing ->
             putStrLn ("max history: couldn't make an Int out of \"" ++ show txt ++ "\"") >> reset
           Just 0  -> putStrLn ("max history: must be greater than 0") >> reset
           Just k  -> IORef.writeIORef (chanMaxHistory channel) k
 
-  _ <- on entryEntry Gtk.entryActivate updateMaxHistory
+  void $ on maxHistoryEntry Gtk.entryActivate updateMaxHistory
   updateMaxHistory
 
 
-  Gtk.set entryAndLabel [ Gtk.containerChild := entryLabel
-                        , Gtk.boxChildPacking entryLabel := Gtk.PackNatural
-                        , Gtk.containerChild := entryEntry
-                        , Gtk.boxChildPacking entryEntry := Gtk.PackNatural
-                        ]
+  Gtk.set maxHistoryEntryAndLabel
+    [ Gtk.containerChild := maxHistoryLabel
+    , Gtk.boxChildPacking maxHistoryLabel := Gtk.PackNatural
+    , Gtk.containerChild := maxHistoryEntry
+    , Gtk.boxChildPacking maxHistoryEntry := Gtk.PackNatural
+    ]
 
 
   -- put all the buttons/entries together
-  Gtk.set buttonsBox [ Gtk.containerChild := buttonNew
-                     , Gtk.boxChildPacking buttonNew := Gtk.PackNatural
-                     , Gtk.containerChild := buttonAlsoDoNothing
-                     , Gtk.boxChildPacking buttonAlsoDoNothing := Gtk.PackNatural
-                     , Gtk.containerChild := entryAndLabel
-                     , Gtk.boxChildPacking entryAndLabel := Gtk.PackNatural
-                     ]
+  Gtk.set buttonsBox
+    [ Gtk.containerChild := buttonNew
+    , Gtk.boxChildPacking buttonNew := Gtk.PackNatural
+    , Gtk.containerChild := buttonAlsoDoNothing
+    , Gtk.boxChildPacking buttonAlsoDoNothing := Gtk.PackNatural
+    , Gtk.containerChild := maxHistoryEntryAndLabel
+    , Gtk.boxChildPacking maxHistoryEntryAndLabel := Gtk.PackNatural
+    ]
 
-  Gtk.set vbox [ Gtk.containerChild := nameBox
-               , Gtk.boxChildPacking   nameBox := Gtk.PackNatural
-               , Gtk.containerChild := buttonsBox
-               , Gtk.boxChildPacking   buttonsBox := Gtk.PackNatural
-               ]
+  Gtk.set vbox
+    [ Gtk.containerChild := nameBox
+    , Gtk.boxChildPacking   nameBox := Gtk.PackNatural
+    , Gtk.containerChild := buttonsBox
+    , Gtk.boxChildPacking   buttonsBox := Gtk.PackNatural
+    ]
 
   return vbox
 
 
 ----  -- save all channel data when this button is pressed
-----  _ <- on renderer3 Gtk.cellToggled $ \pathStr -> do
+----  void $ on renderer3 Gtk.cellToggled $ \pathStr -> do
 ----    let (i:_) = Gtk.stringToTreePath pathStr
 ----    lv <- Gtk.listStoreGetValue model i
 ----    let writerThread = do
@@ -514,7 +526,7 @@ newChannelWidget channel graphWindowsToBeKilled = do
 ----          putStrLn "writing file with sizes..."
 ----          writeFile (filename ++ ".sizes") (unlines $ map show sizes)
 ----          putStrLn "done"
-----    _ <- CC.forkIO writerThread
+----    void $ CC.forkIO writerThread
 --    return ()
 --
 --  return treeview

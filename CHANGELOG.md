@@ -1,3 +1,10 @@
+HEAD
+---
+* code cleanup
+* use Gtk draw signal instead of expose signal (fixes buggy behavior)
+* more understandable and maintainable concurrency strategy
+* change default max history length to 500
+
 0.9.0.3
 ---
 * initial settings selector box is big enough to see some fields

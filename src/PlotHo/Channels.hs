@@ -36,6 +36,13 @@ import PlotHo.GraphWidget ( newGraph )
 import PlotHo.Plotter ( Plotter, ChannelStuff(..), tell )
 import PlotHo.PlotTypes ( Channel(..), PlotterOptions(..) )
 
+-- hardcode options for now
+plotterOptions :: PlotterOptions
+plotterOptions =
+  PlotterOptions
+  { maxDrawRate = 40
+  }
+
 -- | Simplified time-series channel which passes a "send message" function to a worker and forks it using 'Control.Concurrent.forkIO'.
 -- The plotter will plot a time series of messages sent by the worker.
 -- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
@@ -44,29 +51,27 @@ import PlotHo.PlotTypes ( Channel(..), PlotterOptions(..) )
 -- and use a type like a Tree to represent your data, or use the 'addHistoryChannel' function.
 addHistoryChannel ::
   Lookup a
-  => PlotterOptions -- ^ some options
-  -> String -- ^ channel name
+  => String -- ^ channel name
   -> XAxisType -- ^ what to use for the X axis
   -> ((a -> Bool -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'Control.Concurrent.forkIO'
   -> Plotter ()
-addHistoryChannel plotterOptions name xaxisType action = do
+addHistoryChannel name xaxisType action = do
   (chan, newMessage) <- liftIO $ newHistoryChannel name xaxisType
   workerTid <- liftIO $ CC.forkIO (action newMessage)
   tell ChannelStuff { csKillThreads = CC.killThread workerTid
-                    , csMkChanEntry = newChannelWidget plotterOptions chan
+                    , csMkChanEntry = newChannelWidget chan
                     }
 
 -- | Dynamic time-series channel which can change its signal tree without recompiling the plotter.
 addHistoryChannel' ::
-  PlotterOptions -- ^ some options
-  -> String -- ^ channel name
+  String -- ^ channel name
   -> ((Double -> Vector Double -> Maybe Meta -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
   -> Plotter ()
-addHistoryChannel' plotterOptions name action = do
+addHistoryChannel' name action = do
   (chan, newMessage) <- liftIO $ newHistoryChannel' name
   workerTid <- liftIO $ CC.forkIO (action newMessage)
   tell ChannelStuff { csKillThreads = CC.killThread workerTid
-                    , csMkChanEntry = newChannelWidget plotterOptions chan
+                    , csMkChanEntry = newChannelWidget chan
                     }
 
 -- | This is the general interface to plot whatever you want.
@@ -75,17 +80,16 @@ addHistoryChannel' plotterOptions name action = do
 -- Using types or data, you must encode the signal tree with the message so that
 -- the plotter can build you the nice message toggle tree.
 addChannel ::
-  PlotterOptions -- ^ some options
-  -> String -- ^ channel name
+  String -- ^ channel name
   -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
   -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
   -> ((a -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
   -> Plotter ()
-addChannel plotterOptions name sameSignalTree toSignalTree action = do
+addChannel name sameSignalTree toSignalTree action = do
   (chan, newMessage) <- liftIO $ newChannel name sameSignalTree toSignalTree
   workerTid <- liftIO $ CC.forkIO (action newMessage)
   tell ChannelStuff { csKillThreads = CC.killThread workerTid
-                    , csMkChanEntry = newChannelWidget plotterOptions chan
+                    , csMkChanEntry = newChannelWidget chan
                     }
 
 
@@ -237,7 +241,7 @@ data History' = History' Bool (S.Seq (Double, Vector Double)) Meta
 newHistoryChannel' ::
   String -> IO (Channel History', Double -> Vector Double -> Maybe Meta -> IO ())
 newHistoryChannel' name = do
-  maxHist <- IORef.newIORef 200
+  maxHist <- IORef.newIORef 500
 
   msgStore <- Gtk.listStoreNew []
 
@@ -296,8 +300,8 @@ newHistoryChannel' name = do
   return (retChan, newMessage)
 
 -- the list of channels
-newChannelWidget :: PlotterOptions -> Channel a -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
-newChannelWidget plotterOptions channel graphWindowsToBeKilled = do
+newChannelWidget :: Channel a -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
+newChannelWidget channel graphWindowsToBeKilled = do
   vbox <- Gtk.vBoxNew False 4
 
   nameBox' <- Gtk.hBoxNew False 4

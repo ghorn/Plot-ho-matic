@@ -12,8 +12,6 @@ module PlotHo
 
          Plotter
        , runPlotter
-       , PlotterOptions(..)
-       , defaultPlotterOptions
        , XAxisType(..)
        , addHistoryChannel
        , Meta
@@ -27,14 +25,6 @@ import Accessors ( Lookup )
 
 import PlotHo.Channels ( Meta, XAxisType(..), addHistoryChannel, addHistoryChannel', addChannel )
 import PlotHo.Plotter ( Plotter, runPlotter )
-import PlotHo.PlotTypes ( PlotterOptions(..) )
-
-defaultPlotterOptions :: PlotterOptions
-defaultPlotterOptions =
-  PlotterOptions
-  { maxDrawRate = 40
-  }
-
 
 -- $simple
 --
@@ -65,7 +55,7 @@ defaultPlotterOptions =
 -- >
 -- > main :: IO ()
 -- > main = runPlotter $
--- >   addHistoryChannel defaultPlotterOptions "it's foo" XAxisCount messageSender
+-- >   addHistoryChannel "it's foo" XAxisCount messageSender
 --
 -- When the plotter executes, @messageSender@ will be forked and will
 -- forever listen for new messages. Every time it receives a new message

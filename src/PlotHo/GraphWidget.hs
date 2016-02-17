@@ -3,8 +3,7 @@
 {-# LANGUAGE PackageImports #-}
 
 module PlotHo.GraphWidget
-       ( PlotterOptions(..)
-       , newGraph
+       ( newGraph
        ) where
 
 import Control.Concurrent ( MVar )
@@ -27,17 +26,11 @@ import qualified Data.Text as T
 import qualified Graphics.Rendering.Chart as Chart
 
 import PlotHo.ChartRender ( AxisScaling(..), toChartRender )
-import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..), MarkedState(..) )
+import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..), MarkedState(..), PlotterOptions(..) )
 
 debug :: MonadIO m => String -> m ()
 --debug = liftIO . putStrLn
 debug = const (return ())
-
--- | Plotter options
-data PlotterOptions
-  = PlotterOptions
-    { maxDrawRate :: Double -- ^ limit the draw frequency to this number in Hz
-    }
 
 -- make a new graph window
 newGraph ::

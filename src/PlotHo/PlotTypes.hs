@@ -4,11 +4,12 @@
 {-# Language PackageImports #-}
 
 module PlotHo.PlotTypes
-       ( Channel(..)
+       ( AxisScaling(..)
+       , Channel(..)
        , GraphInfo(..)
        , ListViewInfo(..)
-       , AxisScaling(..)
        , MarkedState(..)
+       , PlotterOptions(..)
        ) where
 
 import Data.Tree ( Tree )
@@ -51,3 +52,9 @@ data Channel a =
                                            )]
           , chanMaxHistory :: IORef Int
           }
+
+-- | Some options
+data PlotterOptions
+  = PlotterOptions
+    { maxDrawRate :: Double -- ^ limit the draw frequency to this number in Hz
+    }

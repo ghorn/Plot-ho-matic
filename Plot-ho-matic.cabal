@@ -31,21 +31,21 @@ library
                      SetHo.LookupTree
                      SetHo.OptionsWidget
   build-depends:     base >= 4.6.0.0 && < 5
-                     , cereal
-                     , containers
                      , bytestring
-                     , lens
-                     , data-default-class
-                     , glib
-                     , gtk3 >= 0.14.2
-                     , time
+                     , cairo
+                     , cereal
                      , Chart >= 1.1
                      , Chart-cairo >= 1.1
-                     , cairo
-                     , text
-                     , vector
-                     , transformers
+                     , containers
+                     , data-default-class
                      , generic-accessors >= 0.6.0.0
+                     , glib
+                     , gtk3 >= 0.14.2
+                     , lens
+                     , text
+                     , time
+                     , transformers
+                     , vector
 
   ghc-options:      -O2 -Wall
   ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts

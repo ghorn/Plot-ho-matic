@@ -275,8 +275,8 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
   rendererSignal <- Gtk.cellRendererTextNew
   rendererVisible <- Gtk.cellRendererToggleNew
 
-  Gtk.cellLayoutPackStart colSignal rendererSignal True
-  Gtk.cellLayoutPackStart colVisible rendererVisible True
+  Gtk.treeViewColumnPackStart colSignal rendererSignal True
+  Gtk.treeViewColumnPackStart colVisible rendererVisible True
 
   let showName :: Either String (a -> [[(Double, Double)]]) -> [String] -> String
       -- show a getter name

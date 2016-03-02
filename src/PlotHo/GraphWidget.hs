@@ -266,17 +266,17 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
   Gtk.treeViewSetHeadersVisible treeview True
 
   -- add some columns
-  col1 <- Gtk.treeViewColumnNew
-  col2 <- Gtk.treeViewColumnNew
+  colSignal <- Gtk.treeViewColumnNew
+  colVisible <- Gtk.treeViewColumnNew
 
-  Gtk.treeViewColumnSetTitle col1 "signal"
-  Gtk.treeViewColumnSetTitle col2 "visible?"
+  Gtk.treeViewColumnSetTitle colSignal "signal"
+  Gtk.treeViewColumnSetTitle colVisible "visible?"
 
-  renderer1 <- Gtk.cellRendererTextNew
-  renderer2 <- Gtk.cellRendererToggleNew
+  rendererSignal <- Gtk.cellRendererTextNew
+  rendererVisible <- Gtk.cellRendererToggleNew
 
-  Gtk.cellLayoutPackStart col1 renderer1 True
-  Gtk.cellLayoutPackStart col2 renderer2 True
+  Gtk.cellLayoutPackStart colSignal rendererSignal True
+  Gtk.cellLayoutPackStart colVisible rendererVisible True
 
   let showName :: Either String (a -> [[(Double, Double)]]) -> [String] -> String
       -- show a getter name
@@ -288,11 +288,11 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
       showName (Left typeName) (name:_) = name ++ " (" ++ typeName ++ ")"
       showName (Left _) [] = error "showName on parent got an empty list"
 
-  Gtk.cellLayoutSetAttributes col1 renderer1 treeStore $
+  Gtk.cellLayoutSetAttributes colSignal rendererSignal treeStore $
     \(ListViewInfo {lviName = name, lviTypeOrGetter = typeOrGetter}) ->
       [ Gtk.cellText := showName typeOrGetter (reverse name)
       ]
-  Gtk.cellLayoutSetAttributes col2 renderer2 treeStore $ \lvi -> case lviMarked lvi of
+  Gtk.cellLayoutSetAttributes colVisible rendererVisible treeStore $ \lvi -> case lviMarked lvi of
     On -> [ Gtk.cellToggleInconsistent := False
           , Gtk.cellToggleActive := True
           ]
@@ -303,8 +303,8 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
                     , Gtk.cellToggleInconsistent := True
                     ]
 
-  void $ Gtk.treeViewAppendColumn treeview col1
-  void $ Gtk.treeViewAppendColumn treeview col2
+  void $ Gtk.treeViewAppendColumn treeview colSignal
+  void $ Gtk.treeViewAppendColumn treeview colVisible
 
 
   let -- update the graph information
@@ -337,7 +337,7 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
                    Just i -> return i
 
   -- update which y axes are visible
-  _ <- on renderer2 Gtk.cellToggled $ \pathStr -> do
+  _ <- on rendererVisible Gtk.cellToggled $ \pathStr -> do
     let treePath = Gtk.stringToTreePath pathStr
 
         getChildrenPaths path' = do

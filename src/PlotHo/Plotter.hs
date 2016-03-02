@@ -14,7 +14,7 @@ module PlotHo.Plotter
 
 import qualified GHC.Stats
 
-import Control.Applicative ( liftA2 )
+import Control.Applicative
 import Control.Monad ( void )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC

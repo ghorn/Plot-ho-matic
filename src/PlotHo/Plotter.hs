@@ -18,10 +18,12 @@ import Control.Applicative
 import Control.Monad ( void )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
+import Data.Monoid
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
 import System.Glib.Signals ( on )
+import Prelude
 
 -- | add channels to this, then run it with 'runPlotter'
 newtype Plotter a = Plotter { unPlotter :: IO (a, [ChannelStuff]) } deriving Functor

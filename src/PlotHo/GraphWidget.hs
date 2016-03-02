@@ -80,7 +80,7 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
 
   -- new chart drawing area
   chartCanvas <- Gtk.drawingAreaNew
-  void $ Gtk.widgetSetSizeRequest chartCanvas 250 250
+  void $ Gtk.widgetSetSizeRequest chartCanvas 80 80
 
   -- some mvars for syncronizing rendering with drawing
   needRedrawMVar <- CC.newMVar False

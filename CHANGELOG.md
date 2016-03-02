@@ -1,3 +1,7 @@
+HEAD
+---
+* smaller minimum plot size
+
 0.9.0.4
 ---
 * code cleanup

@@ -1,6 +1,7 @@
-HEAD
+0.9.0.5
 ---
 * smaller minimum plot size
+* use correct gtk column packing function
 
 0.9.0.4
 ---

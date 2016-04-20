@@ -191,6 +191,7 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
     ]
 
   -- the signal selector
+  -- we put the expander inside the scroll because otherwise it doesn't grow, for some reason >_<
   treeview <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
   treeviewExpander <- Gtk.expanderNew "sig"
   Gtk.set treeviewExpander

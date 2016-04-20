@@ -221,6 +221,7 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
     [ Gtk.containerChild := vboxOptionsAndSignals
     , Gtk.boxChildPacking vboxOptionsAndSignals := Gtk.PackNatural
     , Gtk.containerChild := chartCanvas
+    , Gtk.boxChildPacking chartCanvas := Gtk.PackGrow
     ]
   void $ Gtk.set win
     [ Gtk.containerChild := hboxEverything ]

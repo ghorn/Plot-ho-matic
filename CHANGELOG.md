@@ -1,3 +1,7 @@
+HEAD
+---
+* Fix regression where signal selectors weren't growing
+
 0.9.0.5
 ---
 * smaller minimum plot size

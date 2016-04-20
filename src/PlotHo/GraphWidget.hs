@@ -191,19 +191,28 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
     ]
 
   -- the signal selector
-  treeview' <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
-  treeview <- Gtk.expanderNew "signals"
-  Gtk.set treeview [ Gtk.containerChild := treeview'
-                   , Gtk.expanderExpanded := True
-                   ]
+  treeview <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
+  treeviewExpander <- Gtk.expanderNew "signals"
+  Gtk.set treeviewExpander
+    [ Gtk.containerChild := treeview
+    , Gtk.expanderExpanded := True
+    ]
+
+  treeviewExpanderScroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.containerAdd treeviewExpanderScroll treeviewExpander
+  Gtk.set treeviewExpanderScroll
+    [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
+    , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+    ]
+
 
   -- options and signal selector packed in vbox
   vboxOptionsAndSignals <- Gtk.vBoxNew False 4
   Gtk.set vboxOptionsAndSignals
     [ Gtk.containerChild := optionsExpander
     , Gtk.boxChildPacking optionsExpander := Gtk.PackNatural
-    , Gtk.containerChild := treeview
-    , Gtk.boxChildPacking treeview := Gtk.PackGrow
+    , Gtk.containerChild := treeviewExpanderScroll
+    , Gtk.boxChildPacking treeviewExpanderScroll := Gtk.PackGrow
     ]
 
   -- hbox to hold eveything
@@ -258,7 +267,7 @@ newSignalSelectorArea ::
   -> (a -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> CC.MVar (GraphInfo a)
   -> Gtk.ListStore a
-  -> IO () -> IO Gtk.ScrolledWindow
+  -> IO () -> IO Gtk.TreeView
 newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw = do
   treeStore <- Gtk.treeStoreNew []
   treeview <- Gtk.treeViewNewWithModel treeStore
@@ -478,13 +487,7 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
     rebuildSignalTree (forestFromMeta newMsg)
     redraw
 
-
-  scroll <- Gtk.scrolledWindowNew Nothing Nothing
-  Gtk.containerAdd scroll treeview
-  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
-                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
-                 ]
-  return scroll
+  return treeview
 
 
 

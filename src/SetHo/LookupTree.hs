@@ -146,7 +146,7 @@ newLookupTreeview ::
   -> DTree
   -> IO Bool
   -> (DTree -> IO ())
-  -> IO (Gtk.ScrolledWindow, IO DTree, DTree -> IO (), IO (), DTree -> IO ())
+  -> IO (Gtk.TreeView, IO DTree, DTree -> IO (), IO (), DTree -> IO ())
 newLookupTreeview rootName initialValue getAutocommit commit = do
   treeStore <- Gtk.treeStoreNew [] :: IO (Gtk.TreeStore ListViewElement)
   treeview <- Gtk.treeViewNewWithModel treeStore :: IO Gtk.TreeView
@@ -464,16 +464,7 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
   tree <- ddataToTree (Just rootName) initialValue
   Gtk.treeStoreInsertTree treeStore [] 0 tree
 
-  scroll <- Gtk.scrolledWindowNew Nothing Nothing
-  Gtk.containerAdd scroll treeview
-  Gtk.set scroll [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
-                 , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
-                 ]
-  -- 20 pixels width: other stuff is certainly larger than that so it'll never get that small
-  -- 110 pixels height: enough for the user to see the selector window and a child or two.
-  _ <- Gtk.widgetSetSizeRequest scroll 20 110
-
-  return (scroll, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadDTree)
+  return (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadDTree)
 
 mergeSums :: SumElem -> SumElem -> (Bool, SumElem)
 mergeSums oldSum newSum

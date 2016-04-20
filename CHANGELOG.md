@@ -1,6 +1,7 @@
 HEAD
 ---
 * Fix regression where signal selectors weren't growing
+* rename {options -> opt, signals -> sig} to save space
 
 0.9.0.5
 ---

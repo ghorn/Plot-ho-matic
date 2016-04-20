@@ -184,7 +184,7 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
 
   -- the options widget
   optionsWidget <- makeOptionsWidget graphInfoMVar redraw
-  optionsExpander <- Gtk.expanderNew "options"
+  optionsExpander <- Gtk.expanderNew "opt"
   Gtk.set optionsExpander
     [ Gtk.containerChild := optionsWidget
     , Gtk.expanderExpanded := False
@@ -192,7 +192,7 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
 
   -- the signal selector
   treeview <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
-  treeviewExpander <- Gtk.expanderNew "signals"
+  treeviewExpander <- Gtk.expanderNew "sig"
   Gtk.set treeviewExpander
     [ Gtk.containerChild := treeview
     , Gtk.expanderExpanded := True

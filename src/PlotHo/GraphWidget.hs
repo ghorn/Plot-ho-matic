@@ -191,29 +191,29 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
     ]
 
   -- the signal selector
-  -- we put the expander inside the scroll because otherwise it doesn't grow, for some reason >_<
   treeview <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
-  treeviewExpander <- Gtk.expanderNew "sig"
-  Gtk.set treeviewExpander
-    [ Gtk.containerChild := treeview
-    , Gtk.expanderExpanded := True
-    ]
 
-  treeviewExpanderScroll <- Gtk.scrolledWindowNew Nothing Nothing
-  Gtk.containerAdd treeviewExpanderScroll treeviewExpander
-  Gtk.set treeviewExpanderScroll
+  treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically
+  Gtk.containerAdd treeviewScroll treeview
+  Gtk.set treeviewScroll
     [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
     , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
     ]
 
+  treeviewExpander <- Gtk.expanderNew "sig"
+  Gtk.set treeviewExpander
+    [ Gtk.containerChild := treeviewScroll
+    , Gtk.expanderExpanded := True
+    ]
 
   -- options and signal selector packed in vbox
   vboxOptionsAndSignals <- Gtk.vBoxNew False 4
   Gtk.set vboxOptionsAndSignals
     [ Gtk.containerChild := optionsExpander
     , Gtk.boxChildPacking optionsExpander := Gtk.PackNatural
-    , Gtk.containerChild := treeviewExpanderScroll
-    , Gtk.boxChildPacking treeviewExpanderScroll := Gtk.PackGrow
+    , Gtk.containerChild := treeviewExpander
+    , Gtk.boxChildPacking treeviewExpander := Gtk.PackGrow
     ]
 
   -- hbox to hold eveything

@@ -86,17 +86,18 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
   (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadFromFile) <-
     newLookupTreeview rootName initialValue (Gtk.toggleButtonGetActive buttonAutoCommit) commit
 
-  treeviewExpander <- Gtk.expanderNew "signals"
-  Gtk.set treeviewExpander
-    [ Gtk.containerChild := treeview
-    , Gtk.expanderExpanded := True
-    ]
-
-  treeviewExpanderScroll <- Gtk.scrolledWindowNew Nothing Nothing
-  Gtk.containerAdd treeviewExpanderScroll treeviewExpander
-  Gtk.set treeviewExpanderScroll
+  treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically
+  Gtk.containerAdd treeviewScroll treeview
+  Gtk.set treeviewScroll
     [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
     , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+    ]
+
+  treeviewExpander <- Gtk.expanderNew "signals"
+  Gtk.set treeviewExpander
+    [ Gtk.containerChild := treeviewScroll
+    , Gtk.expanderExpanded := True
     ]
 
   let menuBarDescription =
@@ -127,8 +128,8 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
     , Gtk.boxChildPacking buttonTakeUpstream := Gtk.PackNatural
     , Gtk.containerChild := options
     , Gtk.boxChildPacking options := Gtk.PackNatural
-    , Gtk.containerChild := treeviewExpanderScroll
-    , Gtk.boxChildPacking treeviewExpanderScroll := Gtk.PackGrow
+    , Gtk.containerChild := treeviewExpander
+    , Gtk.boxChildPacking treeviewExpander := Gtk.PackGrow
     ]
 
   _ <- on buttonCommit Gtk.buttonActivated $ do

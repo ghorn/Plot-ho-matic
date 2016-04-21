@@ -1,3 +1,7 @@
+0.9.0.7
+---
+* Put scrolledWindow inside expander
+
 0.9.0.6
 ---
 * Fix regression where signal selectors weren't growing

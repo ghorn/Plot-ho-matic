@@ -32,7 +32,6 @@ library
                      PlotHo.Plotter,
                      PlotHo.PlotTypes,
                      SetHo.LookupTree
-                     SetHo.OptionsWidget
 
   build-depends:     base >= 4.6.0.0 && < 5
                      , bytestring

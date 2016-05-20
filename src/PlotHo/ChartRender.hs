@@ -52,7 +52,9 @@ toChartRender (xScaling, yScaling) (xRange, yRange) mtitle namePcs rectSize =
 
     title = case mtitle of
       Nothing -> id
-      Just t -> Chart.layout_title .~ t
+      Just t ->
+        (Chart.layout_title .~ t) .
+        ((Chart.layout_title_style . Chart.font_size) .~ 10)
     layout = Chart.layout_plots .~ map Chart.toPlot allLines
              $ title
              $ Chart.layout_x_axis . Chart.laxis_title .~ "time [s]"

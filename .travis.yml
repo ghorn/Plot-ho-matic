@@ -1,50 +1,33 @@
-# from https://github.com/hvr/multi-ghc-travis
-
 # explicitly request container-based infrastructure
 sudo: false
 
 env:
- - CABALVER=1.22 GHCVER=7.8.4 # see note about Alex/Happy
- - CABALVER=1.22 GHCVER=7.10.3 # see note about Alex/Happy
+ - GHCVER=7.10.3
+
+cache:
+  directories:
+  - ~/.stack
 
 addons:
   apt:
     sources:
     - hvr-ghc
     packages:
-    - ghc-7.6.3
-    - ghc-7.8.4
     - ghc-7.10.3
-    - cabal-install-1.22
     - libgsl0-dev
     - liblapack-dev
     - libgtk-3-dev
 
 before_install:
- - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+ - export PATH=/opt/ghc/$GHCVER/bin:$PATH
+ - mkdir -p ~/.local/bin
+ - export PATH=~/.local/bin:$PATH
+ - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar -xzO --wildcards '*/stack' > ~/.local/bin/stack
+ - chmod a+x ~/.local/bin/stack
 
 install:
- - cabal update
- - cabal install alex
- - cabal install happy
- - cabal install gtk2hs-buildtools
- - for pkg in $(ghc-pkg list --user); do ghc-pkg unregister --force ${pkg}; done
- - cabal install --only-dependencies --enable-tests --enable-benchmarks --reorder-goals
+  - stack setup --no-terminal
+  - stack build --only-snapshot --no-terminal
 
-# Here starts the actual work to be performed for the package under test; any command which exits with a non-zero exit code causes the build to fail.
 script:
- - cabal configure --enable-tests --enable-benchmarks -v2  # -v2 provides useful information for debugging
- - cabal build   # this builds all libraries and executables (including tests/benchmarks)
- - cabal test --show-details=always
-# - cabal check
- - cabal sdist   # tests that a source-distribution can be generated
-
-# The following scriptlet checks that the resulting source distribution can be built & installed
- - export SRC_TGZ=$(cabal info . | awk '{print $2 ".tar.gz";exit}') ;
-   cd dist/;
-   if [ -f "$SRC_TGZ" ]; then
-      cabal install "$SRC_TGZ";
-   else
-      echo "expected '$SRC_TGZ' not found";
-      exit 1;
-   fi
+  - stack build --no-terminal

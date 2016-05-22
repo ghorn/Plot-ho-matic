@@ -1,3 +1,7 @@
+0.9.0.8
+---
+* Make title text smaller
+
 0.9.0.7
 ---
 * Put scrolledWindow inside expander

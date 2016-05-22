@@ -51,7 +51,7 @@ library
                      , vector
 
   ghc-options:      -O2 -Wall
-  ghc-prof-options: -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts
+  ghc-prof-options: -O2 -Wall
 
 
 flag examples
@@ -70,8 +70,8 @@ executable plot-example
                        , Plot-ho-matic
                        , containers
 
-  ghc-options:         -O2 -with-rtsopts=-T
-  ghc-prof-options:    -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts
+  ghc-options:         -O2 -Wall -with-rtsopts=-T
+  ghc-prof-options:    -O2 -Wall -with-rtsopts=-T
 
 executable set-example
   if flag(examples)
@@ -85,5 +85,5 @@ executable set-example
                        , Plot-ho-matic
                        , generic-accessors
 
-  ghc-options:         -O2 -with-rtsopts=-T
-  ghc-prof-options:    -O2 -Wall -prof -fprof-auto -fprof-cafs -rtsopts
+  ghc-options:         -O2 -Wall -with-rtsopts=-T
+  ghc-prof-options:    -O2 -Wall -with-rtsopts=-T

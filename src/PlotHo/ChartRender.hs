@@ -18,12 +18,15 @@ import PlotHo.PlotTypes ( AxisScaling(..) )
 -- take the data and use Chart to make a Renderable ()
 toChartRender :: forall a
                  . (Chart.PlotValue a, Show a, RealFloat a)
-                 => (AxisScaling, AxisScaling) -> (Maybe (a,a), Maybe (a,a))
+                 => (AxisScaling, AxisScaling)
+                 -> ((a,a), (a,a))
+                 -> ((a,a), (a,a))
                  -> Maybe String
                  -> [(String, [[(a,a)]])]
                  -> Chart.RectSize
                  -> Cairo.Render ()
-toChartRender (xScaling, yScaling) (xRange, yRange) mtitle namePcs rectSize =
+toChartRender (xScaling, yScaling) (manualXRange, manualYRange) (historyXRange, historyYRange)
+  mtitle namePcs rectSize =
   void $ runBackend (defaultEnv Chart.bitmapAlignmentFns) (Chart.render renderable rectSize)
   where
     renderable :: Chart.Renderable ()
@@ -40,15 +43,20 @@ toChartRender (xScaling, yScaling) (xRange, yRange) mtitle namePcs rectSize =
 
     xscaleFun = case xScaling of
       LogScaling -> Chart.layout_x_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
-      LinearScaling -> case xRange of
-        Nothing -> id
-        Just range -> Chart.layout_x_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
+      LinearScalingAutoRange -> id
+      LinearScalingManualRange ->
+        Chart.layout_x_axis . Chart.laxis_generate .~ Chart.scaledAxis def manualXRange
+      LinearScalingHistoryRange ->
+        Chart.layout_x_axis . Chart.laxis_generate .~ Chart.scaledAxis def historyXRange
+
 
     yscaleFun = case yScaling of
       LogScaling -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
-      LinearScaling -> case yRange of
-        Nothing -> id
-        Just range -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.scaledAxis def range
+      LinearScalingAutoRange -> id
+      LinearScalingManualRange ->
+        Chart.layout_y_axis . Chart.laxis_generate .~ Chart.scaledAxis def manualYRange
+      LinearScalingHistoryRange ->
+        Chart.layout_y_axis . Chart.laxis_generate .~ Chart.scaledAxis def historyYRange
 
     title = case mtitle of
       Nothing -> id

@@ -1,3 +1,7 @@
+0.9.0.9
+---
+* Add option to remember the min/max ranges past the view window
+
 0.9.0.8
 ---
 * Make title text smaller

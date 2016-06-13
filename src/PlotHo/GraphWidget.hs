@@ -12,7 +12,7 @@ import Control.Monad ( forever, unless, void, when )
 import Control.Monad.IO.Class ( MonadIO, liftIO )
 import Data.Either ( isRight )
 import qualified Data.IORef as IORef
-import Data.List ( intercalate )
+import Data.List ( foldl', intercalate )
 import qualified Data.Map as M
 import Data.Maybe ( isNothing, fromJust )
 import Data.Time.Clock ( getCurrentTime, diffUTCTime )
@@ -32,6 +32,9 @@ debug :: MonadIO m => String -> m ()
 --debug = liftIO . putStrLn
 debug = const (return ())
 
+defaultHistoryRange :: (Double, Double)
+defaultHistoryRange = (read "Infinity", - read "Infinity")
+
 -- make a new graph window
 newGraph ::
   forall a
@@ -50,12 +53,14 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
     ]
 
   -- mvar with all the user input
-  graphInfoMVar <- CC.newMVar GraphInfo { giXScaling = LinearScaling
-                                        , giYScaling = LinearScaling
-                                        , giXRange = Nothing
-                                        , giYRange = Nothing
+  graphInfoMVar <- CC.newMVar GraphInfo { giXScaling = LinearScalingAutoRange
+                                        , giYScaling = LinearScalingAutoRange
+                                        , giManualXRange = (-10, 10)
+                                        , giManualYRange = (-10, 10)
                                         , giGetters = []
                                         , giTitle = Nothing
+                                        , giHistoryXRange = defaultHistoryRange
+                                        , giHistoryYRange = defaultHistoryRange
                                         } :: IO (CC.MVar (GraphInfo a))
 
   let -- turn latest signals into a Chart render
@@ -70,10 +75,30 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
           else do datalog <- Gtk.listStoreGetValue msgStore 0
                   return $ map (fmap (\g -> g datalog)) (giGetters gi)
                     :: IO [(String, [[(Double,Double)]])]
+
+        let f :: ((Double, Double), (Double, Double)) -> (Double, Double)
+                 -> ((Double, Double), (Double, Double))
+            f ((minX, maxX), (minY, maxY)) (x, y) =
+              ( (min minX x, max maxX x)
+              , (min minY y, max maxY y)
+              )
+
+            pcs :: [(Double, Double)]
+            pcs = concatMap (concat . snd) namePcs
+
+            newRanges = foldl' f (giHistoryXRange gi, giHistoryYRange gi) pcs
+            newGi =
+              gi
+              { giHistoryXRange = fst newRanges
+              , giHistoryYRange = snd newRanges
+              }
+        void $ CC.swapMVar graphInfoMVar newGi
+
         return $
           toChartRender
           (giXScaling gi, giYScaling gi)
-          (giXRange gi, giYRange gi)
+          (giManualXRange gi, giManualYRange gi)
+          newRanges
           (giTitle gi)
           namePcs
 
@@ -498,51 +523,45 @@ makeOptionsWidget graphInfoMVar redraw = do
   -- user selectable range
   xRange <- Gtk.entryNew
   yRange <- Gtk.entryNew
-  Gtk.set xRange [ Gtk.entryEditable := False
-                 , Gtk.widgetSensitive := False
+  Gtk.set xRange [ Gtk.entryEditable := True
+                 , Gtk.widgetSensitive := True
                  ]
-  Gtk.set yRange [ Gtk.entryEditable := False
-                 , Gtk.widgetSensitive := False
+  Gtk.set yRange [ Gtk.entryEditable := True
+                 , Gtk.widgetSensitive := True
                  ]
   xRangeBox <- labeledWidget "x range:" xRange
   yRangeBox <- labeledWidget "y range:" yRange
   Gtk.set xRange [Gtk.entryText := "(-10,10)"]
   Gtk.set yRange [Gtk.entryText := "(-10,10)"]
   let updateXRange = do
-        Gtk.set xRange [ Gtk.entryEditable := True
-                       , Gtk.widgetSensitive := True
-                       ]
         txt <- Gtk.get xRange Gtk.entryText
         gi <- CC.readMVar graphInfoMVar
         case readMaybe txt of
           Nothing -> do
             putStrLn $ "invalid x range entry: " ++ txt
-            Gtk.set xRange [Gtk.entryText := "(min,max)"]
+            Gtk.set xRange [Gtk.entryText := show (giManualXRange gi)]
           Just (z0,z1) -> if z0 >= z1
                     then do
                       putStrLn $ "invalid x range entry (min >= max): " ++ txt
-                      Gtk.set xRange [Gtk.entryText := "(min,max)"]
+                      Gtk.set xRange [Gtk.entryText := show (giManualXRange gi)]
                       return ()
                     else do
-                      _ <- CC.swapMVar graphInfoMVar (gi {giXRange = Just (z0,z1)})
+                      _ <- CC.swapMVar graphInfoMVar (gi {giManualXRange = (z0, z1)})
                       redraw
   let updateYRange = do
-        Gtk.set yRange [ Gtk.entryEditable := True
-                       , Gtk.widgetSensitive := True
-                       ]
         txt <- Gtk.get yRange Gtk.entryText
         gi <- CC.readMVar graphInfoMVar
         case readMaybe txt of
           Nothing -> do
             putStrLn $ "invalid y range entry: " ++ txt
-            Gtk.set yRange [Gtk.entryText := "(min,max)"]
+            Gtk.set yRange [Gtk.entryText := show (giManualYRange gi)]
           Just (z0,z1) -> if z0 >= z1
                     then do
                       putStrLn $ "invalid y range entry (min >= max): " ++ txt
-                      Gtk.set yRange [Gtk.entryText := "(min,max)"]
+                      Gtk.set yRange [Gtk.entryText := show (giManualYRange gi)]
                       return ()
                     else do
-                      _ <- CC.swapMVar graphInfoMVar (gi {giYRange = Just (z0,z1)})
+                      _ <- CC.swapMVar graphInfoMVar (gi {giManualYRange = (z0, z1)})
                       redraw
   _ <- on xRange Gtk.entryActivate updateXRange
   _ <- on yRange Gtk.entryActivate updateYRange
@@ -551,9 +570,9 @@ makeOptionsWidget graphInfoMVar redraw = do
   xScalingSelector <- Gtk.comboBoxNewText
   yScalingSelector <- Gtk.comboBoxNewText
   mapM_ (Gtk.comboBoxAppendText xScalingSelector . T.pack)
-    ["linear (auto)","linear (manual)","logarithmic (auto)"]
+    ["linear (auto)", "linear (history)", "linear (manual)", "logarithmic (auto)"]
   mapM_ (Gtk.comboBoxAppendText yScalingSelector . T.pack)
-    ["linear (auto)","linear (manual)","logarithmic (auto)"]
+    ["linear (auto)", "linear (history)", "linear (manual)", "logarithmic (auto)"]
   Gtk.comboBoxSetActive xScalingSelector 0
   Gtk.comboBoxSetActive yScalingSelector 0
   xScalingBox <- labeledWidget "x scaling:" xScalingSelector
@@ -561,49 +580,41 @@ makeOptionsWidget graphInfoMVar redraw = do
   let updateXScaling = do
         k <- Gtk.comboBoxGetActive xScalingSelector
         _ <- case k of
-          0 -> do
-            Gtk.set xRange [ Gtk.entryEditable := False
-                           , Gtk.widgetSensitive := False
-                           ]
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giXScaling = LinearScaling, giXRange = Nothing}
-          1 -> do
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giXScaling = LinearScaling, giXRange = Nothing}
-            updateXRange
-          2 -> do
-            Gtk.set xRange [ Gtk.entryEditable := False
-                           , Gtk.widgetSensitive := False
-                           ]
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giXScaling = LogScaling, giXRange = Nothing}
-          _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 3"
+          0 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giXScaling = LinearScalingAutoRange}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giXScaling = LinearScalingHistoryRange}
+          2 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giXScaling = LinearScalingManualRange}
+          3 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giXScaling = LogScaling}
+          _ -> error "the \"impossible\" happened: x scaling comboBox index should be < 4"
         redraw
   let updateYScaling = do
         k <- Gtk.comboBoxGetActive yScalingSelector
         _ <- case k of
-          0 -> do
-            Gtk.set yRange [ Gtk.entryEditable := False
-                           , Gtk.widgetSensitive := False
-                           ]
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giYScaling = LinearScaling, giYRange = Nothing}
-          1 -> do
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giYScaling = LinearScaling, giYRange = Nothing}
-            updateYRange
-          2 -> do
-            Gtk.set yRange [ Gtk.entryEditable := False
-                           , Gtk.widgetSensitive := False
-                           ]
-            CC.modifyMVar_ graphInfoMVar $
-              \gi -> return $ gi {giYScaling = LogScaling, giYRange = Nothing}
-          _ -> error "the \"impossible\" happened: y scaling comboBox index should be < 3"
+          0 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giYScaling = LinearScalingAutoRange}
+          1 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giYScaling = LinearScalingHistoryRange}
+          2 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giYScaling = LinearScalingManualRange}
+          3 -> CC.modifyMVar_ graphInfoMVar $
+                 \gi -> return $ gi {giYScaling = LogScaling}
+          _ -> error "the \"impossible\" happened: y scaling comboBox index should be < 4"
         redraw
   updateXScaling
   updateYScaling
   void $ on xScalingSelector Gtk.changed updateXScaling
   void $ on yScalingSelector Gtk.changed updateYScaling
+
+  resetXHistory <- Gtk.buttonNewWithLabel "reset X range"
+  resetYHistory <- Gtk.buttonNewWithLabel "reset Y range"
+  void $ on resetXHistory Gtk.buttonActivated $
+    CC.modifyMVar_ graphInfoMVar (\gi -> return (gi {giHistoryXRange = defaultHistoryRange}))
+  void $ on resetYHistory Gtk.buttonActivated $
+    CC.modifyMVar_ graphInfoMVar (\gi -> return (gi {giHistoryYRange = defaultHistoryRange}))
+
 
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4
@@ -613,10 +624,14 @@ makeOptionsWidget graphInfoMVar redraw = do
     , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
     , Gtk.containerChild := xRangeBox
     , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
+    , Gtk.containerChild := resetXHistory
+    , Gtk.boxChildPacking   resetXHistory := Gtk.PackNatural
     , Gtk.containerChild := yScalingBox
     , Gtk.boxChildPacking   yScalingBox := Gtk.PackNatural
     , Gtk.containerChild := yRangeBox
     , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
+    , Gtk.containerChild := resetYHistory
+    , Gtk.boxChildPacking   resetYHistory := Gtk.PackNatural
     ]
 
   return vbox

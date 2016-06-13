@@ -31,14 +31,18 @@ instance Show (ListViewInfo a) where
   show (ListViewInfo n (Right _) m) = "ListViewInfo " ++ show (n,m)
 
 data AxisScaling = LogScaling
-                 | LinearScaling
+                 | LinearScalingAutoRange
+                 | LinearScalingHistoryRange
+                 | LinearScalingManualRange
 
 -- what the graph should draw
 data GraphInfo a =
   GraphInfo { giXScaling :: AxisScaling
             , giYScaling :: AxisScaling
-            , giXRange :: Maybe (Double,Double)
-            , giYRange :: Maybe (Double,Double)
+            , giManualXRange :: (Double,Double)
+            , giManualYRange :: (Double,Double)
+            , giHistoryXRange :: (Double, Double)
+            , giHistoryYRange :: (Double, Double)
             , giGetters :: [(String, a -> [[(Double,Double)]])]
             , giTitle :: Maybe String
             }

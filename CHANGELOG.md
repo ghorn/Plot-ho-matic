@@ -1,3 +1,7 @@
+0.9.0.10
+---
+* Fix a nasty space leak
+
 0.9.0.9
 ---
 * Add option to remember the min/max ranges past the view window

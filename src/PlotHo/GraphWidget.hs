@@ -79,9 +79,15 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
         let f :: ((Double, Double), (Double, Double)) -> (Double, Double)
                  -> ((Double, Double), (Double, Double))
             f ((minX, maxX), (minY, maxY)) (x, y) =
-              ( (min minX x, max maxX x)
-              , (min minY y, max maxY y)
+              newMinX `seq` newMaxX `seq` newMinY `seq` newMaxY `seq`
+              ( (newMinX, newMaxX)
+              , (newMinY, newMaxY)
               )
+              where
+                newMinX = min minX x
+                newMaxX = max maxX x
+                newMinY = min minY y
+                newMaxY = max maxY y
 
             pcs :: [(Double, Double)]
             pcs = concatMap (concat . snd) namePcs

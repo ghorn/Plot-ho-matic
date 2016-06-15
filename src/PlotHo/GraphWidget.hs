@@ -78,23 +78,23 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
                   return $ map (fmap (\g -> g datalog)) (giGetters gi)
                     :: IO [(String, [[(Double,Double)]])]
 
-        let f :: ((Double, Double), (Double, Double)) -> (Double, Double)
-                 -> ((Double, Double), (Double, Double))
-            f ((minX, maxX), (minY, maxY)) (x, y) =
-              newMinX `seq` newMaxX `seq` newMinY `seq` newMaxY `seq`
-              ( (newMinX, newMaxX)
-              , (newMinY, newMaxY)
-              )
+        let newRanges = foldl' f (giHistoryXRange gi, giHistoryYRange gi) pcs
               where
-                newMinX = min minX x
-                newMaxX = max maxX x
-                newMinY = min minY y
-                newMaxY = max maxY y
+                pcs :: [(Double, Double)]
+                pcs = concatMap (concat . snd) namePcs
 
-            pcs :: [(Double, Double)]
-            pcs = concatMap (concat . snd) namePcs
-
-            newRanges = foldl' f (giHistoryXRange gi, giHistoryYRange gi) pcs
+                f :: ((Double, Double), (Double, Double)) -> (Double, Double)
+                     -> ((Double, Double), (Double, Double))
+                f ((minX, maxX), (minY, maxY)) (x, y) =
+                  newMinX `seq` newMaxX `seq` newMinY `seq` newMaxY `seq`
+                  ( (newMinX, newMaxX)
+                  , (newMinY, newMaxY)
+                  )
+                  where
+                    newMinX = min minX x
+                    newMaxX = max maxX x
+                    newMinY = min minY y
+                    newMaxY = max maxY y
             newGi =
               gi
               { giHistoryXRange = fst newRanges

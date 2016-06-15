@@ -4,7 +4,8 @@
 {-# LANGUAGE PackageImports #-}
 
 module PlotHo.HistoryChannel
-       ( XAxisType(..)
+       ( Meta
+       , XAxisType(..)
        , newHistoryChannel
        , newHistoryChannel'
        ) where
@@ -23,8 +24,9 @@ import qualified Data.Sequence as S
 
 import Accessors
 
-import PlotHo.Channels
 import PlotHo.PlotTypes ( Channel(..) )
+
+type Meta = [Tree ([String], Either String Int)]
 
 data History a = History (S.Seq (a, Int, NominalDiffTime))
 type HistorySignalTree a = Tree.Forest ([String], Either String (History a -> [[(Double, Double)]]))

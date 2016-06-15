@@ -27,7 +27,7 @@ import qualified Graphics.Rendering.Chart as Chart
 
 import PlotHo.ChartRender ( toChartRender )
 import PlotHo.PlotTypes
-       ( AxisScaling(..), GraphInfo(..), ListViewInfo(..)
+       ( AxisScaling(..), Channel(..), GraphInfo(..), ListViewInfo(..)
        , MarkedState(..), PlotterOptions(..) )
 
 debug :: MonadIO m => String -> m ()
@@ -39,6 +39,19 @@ defaultHistoryRange = (read "Infinity", - read "Infinity")
 
 -- make a new graph window
 newGraph ::
+  PlotterOptions
+  -> (IO () -> IO ())
+  -> Channel -> IO Gtk.Window
+newGraph opts onButton
+  (Channel
+   { chanName = name
+   , chanSameSignalTree = sameSignalTree
+   , chanToSignalTree = toSignalTree
+   , chanMsgStore = msgStore
+   }) = newGraph' opts onButton name sameSignalTree toSignalTree msgStore
+
+-- make a new graph window
+newGraph' ::
   forall a
   . PlotterOptions
   -> (IO () -> IO ())
@@ -46,7 +59,7 @@ newGraph ::
   -> (a -> a -> Bool)
   -> (a -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> Gtk.ListStore a -> IO Gtk.Window
-newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
+newGraph' options onButton channame sameSignalTree forestFromMeta msgStore = do
   win <- Gtk.windowNew
 
   void $ Gtk.set win

@@ -5,14 +5,12 @@
 
 module PlotHo.HistoryChannel
        ( XAxisType(..)
-       , addHistoryChannel
-       , addHistoryChannel'
+       , newHistoryChannel
+       , newHistoryChannel'
        ) where
 
-import qualified Control.Concurrent as CC
 import Control.Lens ( (^.) )
 import Control.Monad ( when )
-import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Data.Foldable as F
 import qualified Data.IORef as IORef
 import Data.Time ( NominalDiffTime, getCurrentTime, diffUTCTime )
@@ -26,7 +24,6 @@ import qualified Data.Sequence as S
 import Accessors
 
 import PlotHo.Channels
-import PlotHo.Plotter ( Plotter, ChannelStuff(..), tell )
 import PlotHo.PlotTypes ( Channel(..) )
 
 data History a = History (S.Seq (a, Int, NominalDiffTime))
@@ -38,38 +35,6 @@ data XAxisType =
   | XAxisTime0 -- ^ time since the first message, normalized to 0 (to reduce plot jitter)
   | XAxisCount -- ^ message index
   | XAxisCount0 -- ^ message index, normalized to 0 (to reduce plot jitter)
-
--- | Simplified time-series channel which passes a "send message" function to a worker and forks it using 'Control.Concurrent.forkIO'.
--- The plotter will plot a time series of messages sent by the worker.
--- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
--- You will have to recompile the plotter if the types change.
--- If you don't want to do this, use the more generic 'addChannel' interface
--- and use a type like a Tree to represent your data, or use the 'addHistoryChannel' function.
-addHistoryChannel ::
-  Lookup a
-  => String -- ^ channel name
-  -> XAxisType -- ^ what to use for the X axis
-  -> ((a -> Bool -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'Control.Concurrent.forkIO'
-  -> Plotter ()
-addHistoryChannel name xaxisType action = do
-  (chan, newMessage) <- liftIO $ newHistoryChannel name xaxisType
-  workerTid <- liftIO $ CC.forkIO (action newMessage)
-  tell ChannelStuff { csKillThreads = CC.killThread workerTid
-                    , csMkChanEntry = newChannelWidget chan
-                    }
-
--- | Dynamic time-series channel which can change its signal tree without recompiling the plotter.
-addHistoryChannel' ::
-  String -- ^ channel name
-  -> ((Double -> Vector Double -> Maybe Meta -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
-  -> Plotter ()
-addHistoryChannel' name action = do
-  (chan, newMessage) <- liftIO $ newHistoryChannel' name
-  workerTid <- liftIO $ CC.forkIO (action newMessage)
-  tell ChannelStuff { csKillThreads = CC.killThread workerTid
-                    , csMkChanEntry = newChannelWidget chan
-                    }
-
 
 historySignalTree :: forall a . Lookup a => XAxisType -> HistorySignalTree a
 historySignalTree axisType = case accessors of
@@ -118,16 +83,19 @@ historySignalTree axisType = case accessors of
           (_, k0', _) S.:< _ -> realToFrac k0'
           S.EmptyL -> 0
 
--- | History channel which automatically generates the signal tree for you
--- based on the Lookup instance. You have to recompile the plotter if
--- the types change.
--- This is the internal part which should be wrapped by 'addHistoryChannel'.
+-- | Simplified time-series channel which automatically generates the signal tree
+-- based on 'Accessors.Lookup'.
+-- You have to recompile the plotter if the types change.
+-- The plotter will plot a time series of messages put by the action returned by this function.
+-- The worker should pass True to reset the message history, so sending True the first message and False subsequent messages is a good starting place.
+-- If this is too restrictive, use the more generic 'newChannel'
+-- and use a Tree-like type to represent your data, or use 'newHistoryChannel''.
 newHistoryChannel ::
   forall a
   . Lookup a
-  => String
-  -> XAxisType
-  -> IO (Channel (History a), a -> Bool -> IO ())
+  => String -- ^ channel name
+  -> XAxisType -- ^ what to use for the X axis
+  -> IO (Channel, a -> Bool -> IO ()) -- ^ return a channel and a "new message" action which can also reset the history
 newHistoryChannel name xaxisType = do
   time0 <- getCurrentTime >>= IORef.newIORef
   counter <- IORef.newIORef 0
@@ -173,10 +141,15 @@ newHistoryChannel name xaxisType = do
 
   return (retChan, newMessage)
 
--- | History channel which does NOT automatically generates the signal tree for you.
--- This is the internal part which should be wrapped by addHistoryChannel'.
+
+-- | History channel which supports data whose structure can change.
+-- It does NOT automatically generate the signal tree like 'newHistoryChannel' does.
+-- This returns a channel and an action which takes x-axis value, a vector of y axis values, and a tree which
+-- indexes these y axis values.
+-- If the data structure changes, a new tree should be sent, otherwise there could be indexing errors.
 newHistoryChannel' ::
-  String -> IO (Channel History', Double -> Vector Double -> Maybe Meta -> IO ())
+  String -- ^ channel name
+  -> IO (Channel, Double -> Vector Double -> Maybe Meta -> IO ())
 newHistoryChannel' name = do
   maxHist <- IORef.newIORef 500
 

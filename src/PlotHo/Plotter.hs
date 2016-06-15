@@ -5,64 +5,26 @@
 {-# LANGUAGE PackageImports #-}
 
 module PlotHo.Plotter
-       ( Plotter(..)
-       , ChannelStuff(..)
-       , runPlotter
-       , execPlotter
-       , tell
+       ( runPlotter
        ) where
 
 import qualified GHC.Stats
 
-import Control.Applicative
 import Control.Monad ( void )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
-import Data.Monoid
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
 import System.Glib.Signals ( on )
 import Prelude
 
--- | add channels to this, then run it with 'runPlotter'
-newtype Plotter a = Plotter { unPlotter :: IO (a, [ChannelStuff]) } deriving Functor
-
-instance Applicative Plotter where
-  pure x = Plotter $ pure (x, [])
-  f <*> v = Plotter $ liftA2 k (unPlotter f) (unPlotter v)
-    where k ~(a, w) ~(b, w') = (a b, w `mappend` w')
-
-instance Monad Plotter where
-    return a = Plotter $ return (a, [])
-    m >>= k  = Plotter $ do
-        ~(a, w)  <- unPlotter m
-        ~(b, w') <- unPlotter (k a)
-        return (b, w `mappend` w')
-    fail msg = Plotter $ fail msg
-
-instance MonadIO Plotter where
-  liftIO m = Plotter $ do
-    a <- m
-    return (a, mempty)
-
-tell :: ChannelStuff -> Plotter ()
-tell w = Plotter (return ((), [w]))
-
-execPlotter :: Plotter a -> IO [ChannelStuff]
-execPlotter m = do
-    ~(_, w) <- unPlotter m
-    return w
-
-data ChannelStuff =
-  ChannelStuff
-  { csKillThreads :: IO ()
-  , csMkChanEntry :: CC.MVar [Gtk.Window] -> IO Gtk.VBox
-  }
+import PlotHo.Channels ( newChannelWidget )
+import PlotHo.PlotTypes ( Channel(..) )
 
 -- | fire up the the GUI
-runPlotter :: Plotter () -> IO ()
-runPlotter plotterMonad = do
+runPlotter :: [Channel] -> IO ()
+runPlotter channels = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
   void Gtk.initGUI
@@ -91,8 +53,7 @@ runPlotter plotterMonad = do
   -- on close, kill all the windows and threads
   graphWindowsToBeKilled <- CC.newMVar []
 
-  channels <- execPlotter plotterMonad
-  let windows = map csMkChanEntry channels
+  let windows = map newChannelWidget channels
 
   chanWidgets <- mapM (\x -> x graphWindowsToBeKilled) windows
 
@@ -101,7 +62,6 @@ runPlotter plotterMonad = do
         CC.killThread statsThread
         gws <- CC.readMVar graphWindowsToBeKilled
         mapM_ Gtk.widgetDestroy gws
-        mapM_ csKillThreads channels
         Gtk.mainQuit
   void $ on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 

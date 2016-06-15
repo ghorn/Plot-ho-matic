@@ -7,7 +7,7 @@ import qualified Control.Concurrent as CC
 import GHC.Generics ( Generic )
 --import qualified System.Remote.Monitoring as EKG
 
-import PlotHo ( Lookup, XAxisType(..), runPlotter, addHistoryChannel )
+import PlotHo ( Lookup, XAxisType(..), runPlotter, newHistoryChannel )
 
 data Foo a = MkFoo { x :: Double
                    , y :: Double
@@ -57,8 +57,14 @@ main :: IO ()
 main = do
 --  ekgTid <- fmap EKG.serverThreadId $ EKG.forkServer "localhost" 8000
 
-  runPlotter $ do
-    addHistoryChannel "Foo (XAxisTime)"   XAxisTime $ channelWriter 0 50000 incrementFoo foo0
-    addHistoryChannel "Bar (XAxisCount)"  XAxisCount $ channelWriter 0 60000 incrementBar bar0
-    addHistoryChannel "Foo (XAxisTime0)"  XAxisTime0 $ channelWriter 0 50000 incrementFoo foo0
-    addHistoryChannel "Bar (XAxisCount0)" XAxisCount0 $ channelWriter 0 60000 incrementBar bar0
+  (chan0, send0) <- newHistoryChannel "Foo (XAxisTime)"   XAxisTime
+  (chan1, send1) <- newHistoryChannel "Bar (XAxisCount)"  XAxisCount
+  (chan2, send2) <- newHistoryChannel "Foo (XAxisTime0)"  XAxisTime0
+  (chan3, send3) <- newHistoryChannel "Bar (XAxisCount0)" XAxisCount0
+
+  _ <- CC.forkIO $ channelWriter 0 50000 incrementFoo foo0 send0
+  _ <- CC.forkIO $ channelWriter 0 60000 incrementBar bar0 send1
+  _ <- CC.forkIO $ channelWriter 0 50000 incrementFoo foo0 send2
+  _ <- CC.forkIO $ channelWriter 0 60000 incrementBar bar0 send3
+
+  runPlotter [chan0, chan1, chan2, chan3]

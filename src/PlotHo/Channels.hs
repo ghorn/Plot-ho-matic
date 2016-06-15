@@ -5,13 +5,12 @@
 
 module PlotHo.Channels
        ( Meta
-       , addChannel
+       , newChannel
          -- * internal
        , newChannelWidget
        ) where
 
 import Control.Monad ( void )
-import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
 import qualified Data.IORef as IORef
 import Data.Tree ( Tree )
@@ -23,7 +22,6 @@ import System.Glib.Signals ( on )
 --import qualified Data.ByteString.Lazy as BSL
 
 import PlotHo.GraphWidget ( newGraph )
-import PlotHo.Plotter ( Plotter, ChannelStuff(..), tell )
 import PlotHo.PlotTypes ( Channel(..), PlotterOptions(..) )
 
 -- hardcode options for now
@@ -40,27 +38,13 @@ type Meta = [Tree ([String], Either String Int)]
 -- Use this when you want to give the whole time series in one go, rather than one at a time
 -- such as with 'addHistoryChannel'.
 -- Using types or data, you must encode the signal tree with the message so that
--- the plotter can build you the nice message toggle tree.
-addChannel ::
-  String -- ^ channel name
-  -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
-  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
-  -> ((a -> IO ()) -> IO ()) -- ^ worker which is passed a "new message" function, this will be forked with 'forkIO'
-  -> Plotter ()
-addChannel name sameSignalTree toSignalTree action = do
-  (chan, newMessage) <- liftIO $ newChannel name sameSignalTree toSignalTree
-  workerTid <- liftIO $ CC.forkIO (action newMessage)
-  tell ChannelStuff { csKillThreads = CC.killThread workerTid
-                    , csMkChanEntry = newChannelWidget chan
-                    }
-
-
+-- the plotter can build you the nice signal tree.
 newChannel ::
   forall a
-  . String
-  -> (a -> a -> Bool)
-  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))])
-  -> IO (Channel a, a -> IO ())
+  . String -- ^ channel name
+  -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
+  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
+  -> IO (Channel, a -> IO ()) -- ^ Return a channel and a "new message" function. You should for a thread which receives messages and calls this action.
 newChannel name sameSignalTree toSignalTree = do
   msgStore <- Gtk.listStoreNew []
   maxHist <- IORef.newIORef 0
@@ -85,7 +69,7 @@ newChannel name sameSignalTree toSignalTree = do
 
 
 -- the list of channels
-newChannelWidget :: Channel a -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
+newChannelWidget :: Channel -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
 newChannelWidget channel graphWindowsToBeKilled = do
   vbox <- Gtk.vBoxNew False 4
 
@@ -105,11 +89,7 @@ newChannelWidget channel graphWindowsToBeKilled = do
   -- button to make a new graph
   buttonNew <- Gtk.buttonNewWithLabel "new graph"
   void $ on buttonNew Gtk.buttonActivated $ do
-    graphWin <-
-      newGraph plotterOptions triggerYo (chanName channel)
-      (chanSameSignalTree channel)
-      (chanToSignalTree channel)
-      (chanMsgStore channel)
+    graphWin <- newGraph plotterOptions triggerYo channel
 
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))

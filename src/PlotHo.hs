@@ -10,34 +10,37 @@ module PlotHo
          -- ** Dynamic data
          -- $dynamic
 
-         Plotter
-       , runPlotter
+         runPlotter
+       , Channel
        , XAxisType(..)
-       , addHistoryChannel
+       , newHistoryChannel
        , Meta
-       , addHistoryChannel'
-       , addChannel
+       , newHistoryChannel'
+       , newChannel
          -- * re-exported for convenience
        , Lookup
        ) where
 
 import Accessors ( Lookup )
 
-import PlotHo.Channels ( Meta, addChannel )
-import PlotHo.HistoryChannel ( XAxisType(..), addHistoryChannel, addHistoryChannel' )
-import PlotHo.Plotter ( Plotter, runPlotter )
+import PlotHo.Channels ( Meta, newChannel )
+import PlotHo.HistoryChannel ( XAxisType(..), newHistoryChannel, newHistoryChannel' )
+import PlotHo.Plotter ( runPlotter )
+import PlotHo.PlotTypes ( Channel )
 
 -- $simple
 --
--- The easiest way to use this library is to use 'GHC.Generics.Generic' to derive an instance of 'Accessors.Lookup' for your data type, and then use 'addHistoryChannel' to create a time series.
--- You need to pass 'addHistoryChannel' an action which periodically sends a new message.
+-- The easiest way to use this library is to use 'GHC.Generics.Generic' to derive an instance of 'Accessors.Lookup' for your data type, and then use 'newHistoryChannel' to create a time series plot.
+-- The 'newHistoryChannel' function will return an action which is used to send new data to the plotter.
 --
 -- For example:
 --
 -- > {-# LANGUAGE DeriveGeneric #-}
 -- >
 -- > import GHC.Generics ( Generic )
+-- >
 -- > import Accessors ( Lookup )
+-- > import Control.Concurrent ( forkIO )
 -- > import PlotHo
 -- >
 -- > data Foo =
@@ -47,21 +50,25 @@ import PlotHo.Plotter ( Plotter, runPlotter )
 -- >     } deriving Generic
 -- > instance Lookup Foo
 -- >
--- > messageSender :: (Foo -> True -> IO ()) -> IO ()
--- > messageSender newMessage = forever $ do
--- >   CC.threadDelay 100000
--- >   foo <- receiveFooFromNetworkOrSomething :: IO Foo
--- >   let reset = False -- never reset in this example
--- >   newMessage foo reset
+-- > messageSender :: (Foo -> Bool -> IO ()) -> IO ()
+-- > messageSender newMessage = go True
+-- >   where
+-- >     go firstMessage = do
+-- >       CC.threadDelay 100000
+-- >       foo <- receiveFooFromNetworkOrSomething :: IO Foo
+-- >       let reset = firstMessage -- reset on the first message
+-- >       newMessage foo reset
+-- >       go False
 -- >
 -- > main :: IO ()
--- > main = runPlotter $
--- >   addHistoryChannel "it's foo" XAxisCount messageSender
+-- > main = do
+-- >   (channel, newMessage) <- addHistoryChannel "it's foo" XAxisCount
+-- >   _ <- forkIO (messageSender newMessage)
+-- >   runPlotter [channel]
 --
--- When the plotter executes, @messageSender@ will be forked and will
--- forever listen for new messages. Every time it receives a new message
--- it will call the @newMessage@ action which instructs the plotter to
--- add a data point and redraw.
+-- When main is run, a new channel is created which returns the "new message" action.
+-- @messageSender@ is then forked and periodically sends new messages to the plotter.
+-- The plotter is then started with `runPlotter`.
 
 
 -- $dynamic

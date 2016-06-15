@@ -1,4 +1,4 @@
-resolver: lts-5.17
+resolver: lts-6.2
 
 compiler-check: newer-minor
 
@@ -7,8 +7,9 @@ packages:
 - .
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
-extra-deps: [ generic-accessors-0.6.0.0
-            , spatial-math-0.2.7.0
+extra-deps: [ generic-accessors-0.6.0.1
+            , spatial-math-0.3.0.0
+            , TypeCompose-0.9.12
             ]
 
 # Override default flag values for local packages and extra-deps

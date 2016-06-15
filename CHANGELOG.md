@@ -2,6 +2,7 @@ HEAD
 ---
 * Better error messages when the "impossible" happens :b
 * Also combine partial common prefixes for plot titles/legends
+* Replace the Plotter monad with a monomorphic (GADT) Channel type.
 
 0.9.0.10
 ---

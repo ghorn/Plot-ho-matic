@@ -1,6 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
---{-# Language ExistentialQuantification #-}
---{-# Language GADTs #-}
+{-# Language GADTs #-}
 {-# Language PackageImports #-}
 
 module PlotHo.PlotTypes
@@ -47,15 +46,16 @@ data GraphInfo a =
             , giTitle :: Maybe String
             }
 
-data Channel a =
-  Channel { chanName :: String
-          , chanMsgStore :: Gtk.ListStore a
-          , chanSameSignalTree :: a -> a -> Bool
-          , chanToSignalTree :: a -> [Tree ( [String]
-                                           , Either String (a -> [[(Double, Double)]])
-                                           )]
-          , chanMaxHistory :: IORef Int
-          }
+data Channel where
+  Channel ::
+    { chanName :: String
+    , chanMsgStore :: Gtk.ListStore a
+    , chanSameSignalTree :: a -> a -> Bool
+    , chanToSignalTree :: a -> [Tree ( [String]
+                                     , Either String (a -> [[(Double, Double)]])
+                                     )]
+    , chanMaxHistory :: IORef Int
+    } -> Channel
 
 -- | Some options
 data PlotterOptions

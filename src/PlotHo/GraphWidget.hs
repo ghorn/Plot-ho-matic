@@ -25,8 +25,10 @@ import Text.Read ( readMaybe )
 import qualified Data.Text as T
 import qualified Graphics.Rendering.Chart as Chart
 
-import PlotHo.ChartRender ( AxisScaling(..), toChartRender )
-import PlotHo.PlotTypes ( GraphInfo(..), ListViewInfo(..), MarkedState(..), PlotterOptions(..) )
+import PlotHo.ChartRender ( toChartRender )
+import PlotHo.PlotTypes
+       ( AxisScaling(..), GraphInfo(..), ListViewInfo(..)
+       , MarkedState(..), PlotterOptions(..) )
 
 debug :: MonadIO m => String -> m ()
 --debug = liftIO . putStrLn

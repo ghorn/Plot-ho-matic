@@ -2,8 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module PlotHo.ChartRender
-       ( AxisScaling(..)
-       , toChartRender
+       ( toChartRender
        ) where
 
 import Control.Lens ( (.~) )

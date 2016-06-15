@@ -1,3 +1,7 @@
+HEAD
+---
+* Better error messages when the "impossible" happens :b
+
 0.9.0.10
 ---
 * Fix a nasty space leak

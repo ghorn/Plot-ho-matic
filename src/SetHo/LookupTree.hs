@@ -43,13 +43,24 @@ data SumElem =
   , seStagedSum :: DSimpleEnum
   , seListStore :: Gtk.ListStore String
 --  , seSpinAdjustment :: Gtk.Adjustment
-  } -- deriving Show
+  }
+instance Show SumElem where
+  show se@(SumElem {}) =
+    init $
+    unlines
+    [ "SumElem"
+    , "{ seName = " ++ show (seName se)
+    , ", seDName = " ++ seDName se
+    , ", seUpstreamSum = " ++ show (seUpstreamSum se)
+    , ", seStagedSum = " ++ show (seStagedSum se)
+    , "}"
+    ]
 
 data ListViewElement =
   LveField FieldElem
   | LveConstructor ConstructorElem
   | LveSum SumElem
---  deriving Show
+  deriving Show
 
 ddataToTree :: Maybe String -> Either DField DData -> IO (Tree ListViewElement)
 ddataToTree name (Left field) = return $ Node (LveField fe) []
@@ -288,37 +299,57 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
           Just r -> return r
           :: IO (Tree ListViewElement)
 
-        let assertCompatible :: Bool -> IO ()
-            assertCompatible False = error "the \"impossible\" happened: trees aren't compatible"
-            assertCompatible True = return ()
+        let assertCompatible :: Show a => Maybe String -> a -> a -> Bool -> IO ()
+            assertCompatible _ _ _ True = return ()
+            assertCompatible mdesc oldNode newNode False =
+              error $
+              unlines $
+              [ "the \"impossible\" happened: trees aren't compatible"
+              ,"old tree:"
+              , show oldTree
+              , ""
+              , "new tree:"
+              , show newTree
+              , ""
+              , "old node:"
+              , show oldNode
+              , ""
+              , "new node:"
+              , show newNode
+              ] ++ case mdesc of
+                Nothing -> []
+                Just desc -> ["", desc]
 
         case (oldTree, newTree) of
           -- sums
-          (Node (LveSum oldSum) [], Node (LveSum newSum) []) -> do
+          (Node oldNode@(LveSum oldSum) [], Node newNode@(LveSum newSum) []) -> do
             let (compatible, mergedSum) = mergeSums oldSum newSum
-            assertCompatible compatible
+            assertCompatible Nothing oldNode newNode compatible
             changed <- Gtk.treeStoreChange treeStore treePath (const (LveSum mergedSum))
             case changed of
               False -> error $ "merged sums didn't change"
               True -> return ()
-          (_, Node (LveSum _) []) -> assertCompatible False
+          (oldNode, newNode@(Node (LveSum _) [])) ->
+            assertCompatible (Just "got a mixed type") oldNode newNode False
           (_, Node (LveSum _) _) -> error "mergeTrees: new LveSum has children"
 
           -- fields
-          (Node (LveField oldField) [], Node (LveField newField) []) -> do
+          (Node oldNode@(LveField oldField) [], Node newNode@(LveField newField) []) -> do
             let (compatible, mergedField) = mergeFields oldField newField
-            assertCompatible compatible
+            assertCompatible Nothing oldNode newNode compatible
             changed <- Gtk.treeStoreChange treeStore treePath (const (LveField mergedField))
             case changed of
               False -> error $ "merged fields didn't change"
               True -> return ()
-          (_, Node (LveField _) []) -> assertCompatible False
+          (oldNode, newNode@(Node (LveField _) [])) ->
+            assertCompatible (Just "got a mixed type") oldNode newNode False
           (_, Node (LveField _) _) -> error "mergeTrees: new LveField has children"
 
           -- constructors
-          (Node (LveConstructor oldCons) oldChildren, Node (LveConstructor newCons) newChildren)
-            | oldCons /= newCons -> assertCompatible False
-            | length oldChildren /= length newChildren -> assertCompatible False
+          (Node oldNode@(LveConstructor oldCons) oldChildren, Node newNode@(LveConstructor newCons) newChildren)
+            | oldCons /= newCons -> assertCompatible Nothing oldNode newNode False
+            | length oldChildren /= length newChildren ->
+                assertCompatible (Just "constructor length mismatch") oldNode newNode False
             | otherwise -> do
                 mtreeIter <- Gtk.treeModelGetIter treeStore treePath
                 treeIter <- case mtreeIter of
@@ -344,7 +375,8 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
                       mergeTrees childPath newChild
                       mergeNthChild (k + 1) others
                 mergeNthChild 0 newChildren
-          (_, Node (LveConstructor _) _) -> assertCompatible False
+          (oldNode, newNode@(Node (LveConstructor _) _)) ->
+            assertCompatible (Just "got a mixed type") oldNode newNode False
 
       receiveNewUpstream :: DTree -> IO ()
       receiveNewUpstream newMsg = do

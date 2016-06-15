@@ -28,6 +28,7 @@ library
 
   other-modules:     PlotHo.Channels,
                      PlotHo.ChartRender,
+                     PlotHo.HistoryChannel,
                      PlotHo.GraphWidget,
                      PlotHo.Plotter,
                      PlotHo.PlotTypes,

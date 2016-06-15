@@ -264,34 +264,75 @@ newGraph options onButton channame sameSignalTree forestFromMeta msgStore = do
 -- The greatest common prefix will be the title.
 -- Everything after that is the field name.
 gettersAndTitle :: forall a . [([String], a)] -> ([(String, a)], Maybe String)
-gettersAndTitle getters0 = (getters2, titles'')
+gettersAndTitle fullGetters =
+  ( map (\(x,y) -> (intercalate "." x, y)) gettersWithPrefixRemoved
+  , mtitle
+  )
   where
-    titles'' = case titles' of
+    mtitle :: Maybe String
+    mtitle = case titleNames of
       [] -> Nothing
       ts -> Just $ intercalate "." (reverse ts)
-    titles' :: [String]
 
-    (titles', getters1) = f [] getters0
-    getters2 = map (\(x,y) -> (intercalate "." x, y)) getters1
+    titleNames :: [String]
+    gettersWithPrefixRemoved :: [([String], a)]
+    (titleNames, gettersWithPrefixRemoved) = splitPartialCommonPrefix $ splitCommonPrefixes [] fullGetters
 
-    extractHead (x:xs, y) = Just (x, (xs, y))
-    extractHead ([], _) = Nothing
+    -- split out the first element if there is one
+    mhead :: ([String], a) -> Maybe (String, ([String], a))
+    mhead (x:xs, y) = Just (x, (xs, y))
+    mhead ([], _) = Nothing
 
-    f titles xs0
-      | any isNothing xs = (titles, xs0)
-      | otherwise = case xs' of
-          [] -> (titles, xs0)
+    splitCommonPrefixes :: [String] -> [([String], a)] -> ([String], [([String], a)])
+    splitCommonPrefixes titles getters0
+      | any isNothing mheads = (titles, getters0)
+      | otherwise = case heads of
+          [] -> (titles, getters0)
           (prefix, _):others
             -- if all prefixes match, do another recursion
-            | all ((prefix ==) . fst) others -> f (prefix:titles) (map snd xs')
+            | all ((prefix ==) . fst) others -> splitCommonPrefixes (prefix:titles) (map snd heads)
             -- otherwise we're done
-            | otherwise -> (titles, xs0)
+            | otherwise -> (titles, getters0)
       where
-        xs :: [Maybe (String, ([String], a))]
-        xs = map extractHead xs0
+        mheads :: [Maybe (String, ([String], a))]
+        mheads = map mhead getters0
 
-        xs' :: [(String, ([String], a))]
-        xs' = map fromJust xs
+        heads :: [(String, ([String], a))]
+        heads = map fromJust mheads
+
+
+
+-- We've already split out all the common whole strings.
+-- Now we want to get any partial strings.
+splitPartialCommonPrefix :: ([String], [([String], a)]) -> ([String], [([String], a)])
+splitPartialCommonPrefix (wholePrefixes, getters)
+  -- if there is no common prefix, do nothing
+  | null prefix = (wholePrefixes, getters)
+  -- If there is a common prefix, add it to the wholePrefixes and remove it from the next names.
+  | otherwise = (wholePrefixes ++ [prefix], map (\(x,y) -> (removePrefix x, y)) getters)
+  where
+    removePrefix :: [String] -> [String]
+    removePrefix [] = [] -- No names, I guess don't return anything. I think this is impossible
+    removePrefix (x:xs) = case drop (length prefix) x of
+      -- If the common prefix is a whole variable name, i guess we shouldn't remove it.
+      [] -> x:xs
+      -- Normal path
+      r -> r:xs
+
+    prefix :: String
+    prefix
+      | any null names = []
+      | otherwise = case map head names of
+          -- only do it if there are at least two
+          first:others@(_:_) -> foldl' commonPrefix first others
+          _ -> []
+      where
+        names :: [[String]]
+        names = map fst getters
+
+    commonPrefix (x:xs) (y:ys)
+      | x == y = x : commonPrefix xs ys
+    commonPrefix _ _ = []
 
 newSignalSelectorArea ::
   forall a

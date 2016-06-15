@@ -1,6 +1,7 @@
 HEAD
 ---
 * Better error messages when the "impossible" happens :b
+* Also combine partial common prefixes for plot titles/legends
 
 0.9.0.10
 ---

@@ -78,18 +78,10 @@ newChannelWidget channel graphWindowsToBeKilled = do
 
   buttonsBox <- Gtk.hBoxNew False 4
 
-  -- button to clear history
-  buttonAlsoDoNothing <- Gtk.buttonNewWithLabel "also do nothing"
---  void $ Gtk.onClicked buttonAlsoDoNothing $ do
---    putStrLn "i promise, nothing happens"
---    -- CC.modifyMVar_ logData (const (return S.empty))
---    return ()
-  let triggerYo action = on buttonAlsoDoNothing Gtk.buttonActivated action >> return ()
-
   -- button to make a new graph
   buttonNew <- Gtk.buttonNewWithLabel "new graph"
   void $ on buttonNew Gtk.buttonActivated $ do
-    graphWin <- newGraph plotterOptions triggerYo channel
+    graphWin <- newGraph plotterOptions channel
 
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
@@ -129,8 +121,6 @@ newChannelWidget channel graphWindowsToBeKilled = do
   Gtk.set buttonsBox
     [ Gtk.containerChild := buttonNew
     , Gtk.boxChildPacking buttonNew := Gtk.PackNatural
-    , Gtk.containerChild := buttonAlsoDoNothing
-    , Gtk.boxChildPacking buttonAlsoDoNothing := Gtk.PackNatural
     , Gtk.containerChild := maxHistoryEntryAndLabel
     , Gtk.boxChildPacking maxHistoryEntryAndLabel := Gtk.PackNatural
     ]

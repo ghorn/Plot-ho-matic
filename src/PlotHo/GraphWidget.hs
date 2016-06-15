@@ -40,26 +40,24 @@ defaultHistoryRange = (read "Infinity", - read "Infinity")
 -- make a new graph window
 newGraph ::
   PlotterOptions
-  -> (IO () -> IO ())
   -> Channel -> IO Gtk.Window
-newGraph opts onButton
+newGraph opts
   (Channel
    { chanName = name
    , chanSameSignalTree = sameSignalTree
    , chanToSignalTree = toSignalTree
    , chanMsgStore = msgStore
-   }) = newGraph' opts onButton name sameSignalTree toSignalTree msgStore
+   }) = newGraph' opts name sameSignalTree toSignalTree msgStore
 
 -- make a new graph window
 newGraph' ::
   forall a
   . PlotterOptions
-  -> (IO () -> IO ())
   -> String
   -> (a -> a -> Bool)
   -> (a -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> Gtk.ListStore a -> IO Gtk.Window
-newGraph' options onButton channame sameSignalTree forestFromMeta msgStore = do
+newGraph' options channame sameSignalTree forestFromMeta msgStore = do
   win <- Gtk.windowNew
 
   void $ Gtk.set win
@@ -237,7 +235,7 @@ newGraph' options onButton channame sameSignalTree forestFromMeta msgStore = do
     ]
 
   -- the signal selector
-  treeview <- newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
+  treeview <- newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redraw
 
   treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
   Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically
@@ -351,13 +349,12 @@ splitPartialCommonPrefix (wholePrefixes, getters)
 
 newSignalSelectorArea ::
   forall a
-  . (IO () -> IO ())
-  -> (a -> a -> Bool)
+  . (a -> a -> Bool)
   -> (a -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))])
   -> CC.MVar (GraphInfo a)
   -> Gtk.ListStore a
   -> IO () -> IO Gtk.TreeView
-newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgStore redraw = do
+newSignalSelectorArea sameSignalTree forestFromMeta graphInfoMVar msgStore redraw = do
   treeStore <- Gtk.treeStoreNew []
   treeview <- Gtk.treeViewNewWithModel treeStore
 
@@ -568,12 +565,6 @@ newSignalSelectorArea onButton sameSignalTree forestFromMeta graphInfoMVar msgSt
   when (size > 0) $ do
     newMsg <- Gtk.listStoreGetValue msgStore 0
     maybeRebuildSignalTree newMsg
-    redraw
-
-  -- for debugging
-  onButton $ do
-    newMsg <- Gtk.listStoreGetValue msgStore 0
-    rebuildSignalTree (forestFromMeta newMsg)
     redraw
 
   return treeview

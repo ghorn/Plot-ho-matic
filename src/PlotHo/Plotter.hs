@@ -66,10 +66,6 @@ runPlotter channels = do
   void $ on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 
   --------------- main widget -----------------
-  -- button to clear history
-  buttonDoNothing <- Gtk.buttonNewWithLabel "this button does absolutely nothing"
-  void $ on buttonDoNothing Gtk.buttonActivated $
-    putStrLn "seriously, it does nothing"
 
   -- box to hold list of channels
   channelBox <- Gtk.vBoxNew False 4
@@ -90,8 +86,6 @@ runPlotter channels = do
   Gtk.set vbox $
     [ Gtk.containerChild := statsLabel
     , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
-    , Gtk.containerChild := buttonDoNothing
-    , Gtk.boxChildPacking buttonDoNothing := Gtk.PackNatural
     , Gtk.containerChild := scroll
     ]
 

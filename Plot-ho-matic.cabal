@@ -26,12 +26,14 @@ library
   default-language:  Haskell2010
   exposed-modules:   PlotHo, SetHo
 
-  other-modules:     PlotHo.Channels,
-                     PlotHo.ChartRender,
-                     PlotHo.HistoryChannel,
-                     PlotHo.GraphWidget,
-                     PlotHo.Plotter,
-                     PlotHo.PlotTypes,
+  other-modules:     PlotHo.Channel
+                     PlotHo.ChartRender
+                     PlotHo.HistoryChannel
+                     PlotHo.GraphWidget
+                     PlotHo.OptionsWidget
+                     PlotHo.Plotter
+                     PlotHo.PlotTypes
+                     PlotHo.SignalSelector
                      SetHo.LookupTree
 
   build-depends:     base >= 4.6.0.0 && < 5
@@ -71,8 +73,10 @@ executable plot-example
                        , Plot-ho-matic
                        , containers
 
-  ghc-options:         -O2 -Wall -with-rtsopts=-T
-  ghc-prof-options:    -O2 -Wall -with-rtsopts=-T
+  ghc-options:         -O2 -Wall -threaded "-with-rtsopts=-T -N1"
+  ghc-prof-options:    -O2 -Wall -threaded "-with-rtsopts=-T -N1"
+--  ghc-options:         -O2 -Wall -threaded "-with-rtsopts=-T -N1 -ls" -threaded -eventlog
+--  ghc-prof-options:    -O2 -Wall -threaded "-with-rtsopts=-T -N1 -ls" -threaded -eventlog
 
 executable set-example
   if flag(examples)

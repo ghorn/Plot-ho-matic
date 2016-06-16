@@ -23,7 +23,7 @@ module PlotHo
 
 import Accessors ( Lookup )
 
-import PlotHo.Channels ( newChannel )
+import PlotHo.Channel ( newChannel )
 import PlotHo.HistoryChannel ( Meta, XAxisType(..), newHistoryChannel, newHistoryChannel' )
 import PlotHo.Plotter ( runPlotter )
 import PlotHo.PlotTypes ( Channel )

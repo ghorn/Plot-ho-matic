@@ -12,22 +12,23 @@ import qualified Graphics.Rendering.Chart as Chart
 import Graphics.Rendering.Chart.Backend.Cairo ( runBackend, defaultEnv )
 import qualified Graphics.Rendering.Cairo as Cairo
 
-import PlotHo.PlotTypes ( AxisScaling(..) )
+import PlotHo.PlotTypes (Axes(..), AxisType(..), XY(..))
 
 -- take the data and use Chart to make a Renderable ()
 toChartRender :: forall a
                  . (Chart.PlotValue a, Show a, RealFloat a)
-                 => (AxisScaling, AxisScaling)
-                 -> ((a,a), (a,a))
-                 -> ((a,a), (a,a))
+                 => Axes a
+                 -> XY (a, a)
                  -> Maybe String
                  -> [(String, [[(a,a)]])]
                  -> Chart.RectSize
                  -> Cairo.Render ()
-toChartRender (xScaling, yScaling) (manualXRange, manualYRange) (historyXRange, historyYRange)
-  mtitle namePcs rectSize =
+toChartRender axes (XY historyXRange historyYRange) mtitle namePcs rectSize =
   void $ runBackend (defaultEnv Chart.bitmapAlignmentFns) (Chart.render renderable rectSize)
   where
+    XY xtype ytype = axesType axes
+    XY manualXRange manualYRange = axesManualRange axes
+
     renderable :: Chart.Renderable ()
     renderable = Chart.toRenderable layout
 
@@ -40,7 +41,8 @@ toChartRender (xScaling, yScaling) (manualXRange, manualYRange) (historyXRange, 
     allLines :: [Chart.PlotLines a a]
     allLines = zipWith drawOne namePcs Chart.defaultColorSeq
 
-    xscaleFun = case xScaling of
+    xscaleFun :: Chart.Layout a a -> Chart.Layout a a
+    xscaleFun = case xtype of
       LogScaling -> Chart.layout_x_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
       LinearScalingAutoRange -> id
       LinearScalingManualRange ->
@@ -49,7 +51,8 @@ toChartRender (xScaling, yScaling) (manualXRange, manualYRange) (historyXRange, 
         Chart.layout_x_axis . Chart.laxis_generate .~ Chart.scaledAxis def historyXRange
 
 
-    yscaleFun = case yScaling of
+    yscaleFun :: Chart.Layout a a -> Chart.Layout a a
+    yscaleFun = case ytype of
       LogScaling -> Chart.layout_y_axis . Chart.laxis_generate .~ Chart.autoScaledLogAxis def
       LinearScalingAutoRange -> id
       LinearScalingManualRange ->

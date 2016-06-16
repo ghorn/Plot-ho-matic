@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ScopedTypeVariables #-}
 {-# Language DeriveFunctor #-}
-{-# LANGUAGE PackageImports #-}
 
 module PlotHo.HistoryChannel
        ( Meta
@@ -10,6 +9,7 @@ module PlotHo.HistoryChannel
        , newHistoryChannel'
        ) where
 
+import qualified Control.Concurrent as CC
 import Control.Lens ( (^.) )
 import Control.Monad ( when )
 import qualified Data.Foldable as F
@@ -19,18 +19,18 @@ import Data.Tree ( Tree )
 import qualified Data.Tree as Tree
 import Data.Vector ( Vector )
 import qualified Data.Vector as V
-import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import qualified Data.Sequence as S
 
 import Accessors
 
-import PlotHo.PlotTypes ( Channel(..) )
+import PlotHo.Channel ( newChannel' )
+import PlotHo.PlotTypes ( Channel(..), Channel'(..), debug )
 
 type Meta = [Tree ([String], Either String Int)]
 
-data History a = History (S.Seq (a, Int, NominalDiffTime))
+newtype History a = History (S.Seq (a, Int, NominalDiffTime))
 type HistorySignalTree a = Tree.Forest ([String], Either String (History a -> [[(Double, Double)]]))
-data History' = History' Bool (S.Seq (Double, Vector Double)) Meta
+data History' = History' !Bool !(S.Seq (Double, Vector Double)) !Meta
 
 data XAxisType =
   XAxisTime -- ^ time since the first message
@@ -101,12 +101,25 @@ newHistoryChannel ::
 newHistoryChannel name xaxisType = do
   time0 <- getCurrentTime >>= IORef.newIORef
   counter <- IORef.newIORef 0
-  maxHist <- IORef.newIORef 500
+  let toSignalTree :: History a -> [Tree ( [String]
+                                         , Either String (History a -> [[(Double, Double)]])
+                                         )]
+      toSignalTree = const (historySignalTree xaxisType)
 
-  msgStore <- Gtk.listStoreNew []
+      sameSignalTree _ _ = True
+
+  (channel', newHistoryMessage) <- newChannel' name sameSignalTree toSignalTree
+    :: IO (Channel' (History a), History a -> IO ())
+
+  -- Put the first message immediately for two reasons:
+  -- 1. Can always assume the MVar is full and save a litle logic.
+  -- 2. Immediately build the signal tree so that the user can see it
+  --    without waiting for the first message.
+  newHistoryMessage (History mempty)
 
   let newMessage :: a -> Bool -> IO ()
       newMessage next reset = do
+        debug "newMessage(newHistoryChannel): message received"
         -- grab the time and counter
         time <- getCurrentTime
         when reset $ do
@@ -117,31 +130,24 @@ newHistoryChannel name xaxisType = do
         time0' <- IORef.readIORef time0
 
         IORef.writeIORef counter (k+1)
-        Gtk.postGUIAsync $ do
-          let val = (next, k, diffUTCTime time time0')
-          size <- Gtk.listStoreGetSize msgStore
-          if size == 0
-            then Gtk.listStorePrepend msgStore (History (S.singleton val))
-            else do History vals0 <- Gtk.listStoreGetValue msgStore 0
-                    maxHistory <- IORef.readIORef maxHist
-                    let dropped = S.drop (1 + S.length vals0 - maxHistory) (vals0 S.|> val)
-                    Gtk.listStoreSetValue msgStore 0 (History dropped)
+        let val = (next, k, diffUTCTime time time0')
 
-          when reset $ Gtk.listStoreSetValue msgStore 0 (History (S.singleton val))
+        latestChanValue <- CC.readMVar (chanLatestValueMVar channel')
+        oldTimeSeries <- case latestChanValue of
+          Just (History r, _) -> return r
+          Nothing -> error "newMessage(newHistoryChannel): the 'impossible' happened: channel has no latest message"
 
-  let tst :: History a -> [Tree ( [String]
-                                , Either String (History a -> [[(Double, Double)]])
-                                )]
-      tst = const (historySignalTree xaxisType)
+        maxHistory <- IORef.readIORef (chanMaxHistory channel')
+        let newTimeSeries
+              | reset = S.singleton val
+              | otherwise = S.drop (1 + S.length oldTimeSeries - maxHistory) (oldTimeSeries S.|> val)
+        debug "newMessage(newHistoryChannel): new history message calling internal newMessage"
+        newHistoryMessage (History newTimeSeries)
 
-  let retChan = Channel { chanName = name
-                        , chanMsgStore = msgStore
-                        , chanSameSignalTree = \_ _ -> True
-                        , chanToSignalTree = tst
-                        , chanMaxHistory = maxHist
-                        }
+      clearHistory :: History a -> History a
+      clearHistory = const (History mempty)
 
-  return (retChan, newMessage)
+  return (Channel (channel' {chanClearHistory = Just clearHistory}) , newMessage)
 
 
 -- | History channel which supports data whose structure can change.
@@ -153,33 +159,6 @@ newHistoryChannel' ::
   String -- ^ channel name
   -> IO (Channel, Double -> Vector Double -> Maybe Meta -> IO ())
 newHistoryChannel' name = do
-  maxHist <- IORef.newIORef 500
-
-  msgStore <- Gtk.listStoreNew []
-
-  let newMessage :: Double -> Vector Double -> Maybe Meta -> IO ()
-      newMessage nextTime nextVal maybeMeta = do
-        Gtk.postGUIAsync $ do
-          let val = (nextTime, nextVal)
-          size <- Gtk.listStoreGetSize msgStore
-          if size == 0
-            then case maybeMeta of
-                   Just meta -> Gtk.listStorePrepend msgStore (History' True (S.singleton val) meta)
-                   Nothing -> error $ unlines
-                              [ "error: History channel has size 0 message store but no reset."
-                              , "This means that the first message the plotter saw didn't contain the meta-data."
-                              , "This was probably caused by starting the plotter AFTER sending the first telemetry message."
-                              ]
-            else do History' _ vals0 meta <- Gtk.listStoreGetValue msgStore 0
-                    maxHistory <- IORef.readIORef maxHist
-                    let dropped = S.drop (1 + S.length vals0 - maxHistory) (vals0 S.|> val)
-                    Gtk.listStoreSetValue msgStore 0 (History' False dropped meta)
-
-          -- reset on new meta
-          case maybeMeta of
-            Nothing -> return () -- no reset
-            Just meta -> Gtk.listStoreSetValue msgStore 0 (History' True (S.singleton val) meta)
-
   let toSignalTree :: History'
                       -> [Tree ( [String]
                                , Either String (History' -> [[(Double, Double)]])
@@ -202,11 +181,33 @@ newHistoryChannel' name = do
       -- if it's a reset, then compare the signal trees
       sameSignalTree (History' _ _ old) (History' True _ new) = old == new
 
-  let retChan = Channel { chanName = name
-                        , chanMsgStore = msgStore
-                        , chanSameSignalTree = sameSignalTree
-                        , chanToSignalTree = toSignalTree
-                        , chanMaxHistory = maxHist
-                        }
+  (channel', newHistoryMessage) <- newChannel' name sameSignalTree toSignalTree
+    :: IO (Channel' History', History' -> IO ())
 
-  return (retChan, newMessage)
+  let newMessage :: Double -> Vector Double -> Maybe Meta -> IO ()
+      newMessage nextTime nextVal maybeMeta = do
+        let val = (nextTime, nextVal)
+
+        latestChannelValue <- CC.readMVar (chanLatestValueMVar channel')
+
+        case (latestChannelValue, maybeMeta) of
+          -- first message and no meta to go with it
+          (Nothing, Nothing) ->
+            putStr $ unlines
+              [ "WARNING: First message seen by Plot-ho-matic doesn't have signal tree meta-data."
+              , "This was probably caused by starting the plotter AFTER sending the first telemetry message."
+              , "Try restarting the application sending messages."
+              ]
+          -- any message with meta is a reset
+          (_, Just meta) -> newHistoryMessage (History' True (S.singleton val) meta)
+          -- later message without meta - no reset
+          (Just (History' _ oldTimeSeries meta, _), Nothing) -> do
+            maxHistory <- IORef.readIORef (chanMaxHistory channel')
+            let newTimeSeries =
+                  S.drop (1 + S.length oldTimeSeries - maxHistory) (oldTimeSeries S.|> val)
+            newHistoryMessage (History' False newTimeSeries meta)
+
+      clearHistory :: History' -> History'
+      clearHistory (History' reset _ meta) = History' reset mempty meta
+
+  return (Channel (channel' {chanClearHistory = Just clearHistory}) , newMessage)

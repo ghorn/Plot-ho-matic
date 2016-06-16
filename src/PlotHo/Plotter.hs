@@ -10,7 +10,7 @@ module PlotHo.Plotter
 
 import qualified GHC.Stats
 
-import Control.Monad ( void )
+import Control.Monad ( unless, void )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
 import qualified Data.IORef as IORef
@@ -18,11 +18,12 @@ import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
 import Text.Read ( readMaybe )
+import System.Exit ( exitFailure )
 import System.Glib.Signals ( on )
 import Prelude
 
 import PlotHo.GraphWidget ( newGraph )
-import PlotHo.PlotTypes ( Channel(..), PlotterOptions(..) )
+import PlotHo.PlotTypes ( Channel(..), Channel'(..), PlotterOptions(..) )
 
 -- hardcode options for now
 plotterOptions :: PlotterOptions
@@ -37,8 +38,16 @@ runPlotter :: [Channel] -> IO ()
 runPlotter channels = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
+  unless CC.rtsSupportsBoundThreads $ do
+    putStr $ unlines
+      [ "Plot-ho-matic requires the threaded RTS."
+      ,  "Please recompile your program with the -threaded GHC option."
+      , "Either add \"ghc-options: -threaded\" to your cabal file "
+      , "or use the -threaded flag when calling GHC from the command line."
+      ]
+    void exitFailure
+
   void Gtk.initGUI
-  void $ Gtk.timeoutAddFull (CC.yield >> return True) Gtk.priorityDefault 50
 
   -- start the main window
   win <- Gtk.windowNew
@@ -76,7 +85,6 @@ runPlotter channels = do
   void $ on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 
   --------------- main widget -----------------
-
   -- box to hold list of channels
   channelBox <- Gtk.vBoxNew False 4
   Gtk.set channelBox $
@@ -115,9 +123,25 @@ newChannelWidget channel graphWindowsToBeKilled = do
   vbox <- Gtk.vBoxNew False 4
 
   nameBox' <- Gtk.hBoxNew False 4
-  nameBox <- labeledWidget (chanName channel) nameBox'
+  nameBox <- labeledWidget ((\(Channel c) -> chanName c) channel) nameBox'
 
   buttonsBox <- Gtk.hBoxNew False 4
+
+  -- button to clear history
+  buttonClearHistory <- Gtk.buttonNewWithLabel "clear history"
+  void $ on buttonClearHistory Gtk.buttonActivated $ do
+    let clearHistory (Channel (Channel' {chanClearHistory = Nothing})) =
+          putStrLn "not clearing history because that doesn't make sense for this type of data"
+        clearHistory (Channel c@(Channel' {chanClearHistory = Just clear})) = do
+          mlatestValue <- CC.takeMVar (chanLatestValueMVar c)
+          case mlatestValue of
+            Nothing -> do
+              putStrLn "not clearing history because no messages has been received"
+              CC.putMVar (chanLatestValueMVar c) mlatestValue
+            Just (latestValue, signalTree) -> do
+              putStrLn $ "clearing history for channel " ++ show (chanName c)
+              CC.putMVar (chanLatestValueMVar c) (Just (clear latestValue, signalTree))
+    clearHistory channel
 
   -- button to make a new graph
   buttonNew <- Gtk.buttonNewWithLabel "new graph"
@@ -144,7 +168,7 @@ newChannelWidget channel graphWindowsToBeKilled = do
           Nothing ->
             putStrLn ("max history: couldn't make an Int out of \"" ++ show txt ++ "\"") >> reset
           Just 0  -> putStrLn ("max history: must be greater than 0") >> reset
-          Just k  -> IORef.writeIORef (chanMaxHistory channel) k
+          Just k  -> IORef.writeIORef ((\(Channel c) -> chanMaxHistory c) channel) k
 
   void $ on maxHistoryEntry Gtk.entryActivate updateMaxHistory
   updateMaxHistory
@@ -162,6 +186,8 @@ newChannelWidget channel graphWindowsToBeKilled = do
   Gtk.set buttonsBox
     [ Gtk.containerChild := buttonNew
     , Gtk.boxChildPacking buttonNew := Gtk.PackNatural
+    , Gtk.containerChild := buttonClearHistory
+    , Gtk.boxChildPacking buttonClearHistory := Gtk.PackNatural
     , Gtk.containerChild := maxHistoryEntryAndLabel
     , Gtk.boxChildPacking maxHistoryEntryAndLabel := Gtk.PackNatural
     ]
@@ -174,30 +200,6 @@ newChannelWidget channel graphWindowsToBeKilled = do
     ]
 
   return vbox
-
-
-----  -- save all channel data when this button is pressed
-----  void $ on renderer3 Gtk.cellToggled $ \pathStr -> do
-----    let (i:_) = Gtk.stringToTreePath pathStr
-----    lv <- Gtk.listStoreGetValue model i
-----    let writerThread = do
-----          bct <- chanGetByteStrings (lvChan lv)
-----          let filename = chanName (lvChan lv) ++ "_log.dat"
-----              blah _      sizes [] = return (reverse sizes)
-----              blah handle sizes ((x,_,_):xs) = do
-----                BSL.hPut handle x
-----                blah handle (BSL.length x : sizes) xs
-----          putStrLn $ "trying to write file \"" ++ filename ++ "\"..."
-----          sizes <- withFile filename WriteMode $ \handle -> blah handle [] bct
-----          putStrLn $ "finished writing file, wrote " ++ show (length sizes) ++ " protos"
-----
-----          putStrLn "writing file with sizes..."
-----          writeFile (filename ++ ".sizes") (unlines $ map show sizes)
-----          putStrLn "done"
-----    void $ CC.forkIO writerThread
---    return ()
---
---  return treeview
 
 
 -- helper to make an hbox with a label

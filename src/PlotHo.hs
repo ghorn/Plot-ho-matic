@@ -11,6 +11,7 @@ module PlotHo
          -- $dynamic
 
          runPlotter
+       , PlotterOptions(..)
        , Channel
        , XAxisType(..)
        , newHistoryChannel
@@ -18,15 +19,17 @@ module PlotHo
        , newHistoryChannel'
        , newChannel
          -- * re-exported for convenience
+       , def
        , Lookup
        ) where
 
 import Accessors ( Lookup )
+import Data.Default.Class ( def )
 
 import PlotHo.Channel ( newChannel )
 import PlotHo.HistoryChannel ( Meta, XAxisType(..), newHistoryChannel, newHistoryChannel' )
 import PlotHo.Plotter ( runPlotter )
-import PlotHo.PlotTypes ( Channel )
+import PlotHo.PlotTypes ( Channel, PlotterOptions(..) )
 
 -- $simple
 --
@@ -64,7 +67,7 @@ import PlotHo.PlotTypes ( Channel )
 -- > main = do
 -- >   (channel, newMessage) <- addHistoryChannel "it's foo" XAxisCount
 -- >   _ <- forkIO (messageSender newMessage)
--- >   runPlotter [channel]
+-- >   runPlotter Nothing [channel]
 --
 -- When main is run, a new channel is created which returns the "new message" action.
 -- @messageSender@ is then forked and periodically sends new messages to the plotter.

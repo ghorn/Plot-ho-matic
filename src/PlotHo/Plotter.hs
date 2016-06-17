@@ -13,6 +13,8 @@ import qualified GHC.Stats
 import Control.Monad ( unless, void )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
+import Data.Default.Class ( def )
+import Data.Maybe ( fromMaybe )
 import qualified Data.IORef as IORef
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
@@ -25,17 +27,10 @@ import Prelude
 import PlotHo.GraphWidget ( newGraph )
 import PlotHo.PlotTypes ( Channel(..), Channel'(..), PlotterOptions(..) )
 
--- hardcode options for now
-plotterOptions :: PlotterOptions
-plotterOptions =
-  PlotterOptions
-  { maxDrawRate = 40
-  }
-
-
 -- | fire up the the GUI
-runPlotter :: [Channel] -> IO ()
-runPlotter channels = do
+runPlotter :: Maybe PlotterOptions -> [Channel] -> IO ()
+runPlotter mplotterOptions channels = do
+  let plotterOptions = fromMaybe def mplotterOptions
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
   unless CC.rtsSupportsBoundThreads $ do
@@ -72,7 +67,7 @@ runPlotter channels = do
   -- on close, kill all the windows and threads
   graphWindowsToBeKilled <- CC.newMVar []
 
-  let windows = map newChannelWidget channels
+  let windows = map (newChannelWidget plotterOptions) channels
 
   chanWidgets <- mapM (\x -> x graphWindowsToBeKilled) windows
 
@@ -118,8 +113,8 @@ runPlotter channels = do
 
 
 -- the list of channels
-newChannelWidget :: Channel -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
-newChannelWidget channel graphWindowsToBeKilled = do
+newChannelWidget :: PlotterOptions -> Channel -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
+newChannelWidget plotterOptions channel graphWindowsToBeKilled = do
   vbox <- Gtk.vBoxNew False 4
 
   nameBox' <- Gtk.hBoxNew False 4

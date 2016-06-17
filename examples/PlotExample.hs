@@ -67,4 +67,4 @@ main = do
   _ <- CC.forkIO $ channelWriter 0 50000 incrementFoo foo0 send2
   _ <- CC.forkIO $ channelWriter 0 60000 incrementBar bar0 send3
 
-  runPlotter [chan0, chan1, chan2, chan3]
+  runPlotter Nothing [chan0, chan1, chan2, chan3]

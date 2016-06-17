@@ -23,6 +23,7 @@ module PlotHo.PlotTypes
 import qualified Control.Concurrent as CC
 import Control.Lens
 import Control.Monad.IO.Class ( MonadIO ) -- , liftIO )
+import Data.Default.Class ( Default(..) )
 import Data.Tree ( Tree )
 import Data.IORef ( IORef )
 import qualified Data.Map.Strict as M
@@ -105,4 +106,10 @@ data Channel' a
 data PlotterOptions
   = PlotterOptions
     { maxDrawRate :: Double -- ^ limit the draw frequency to this number in Hz
+    }
+
+instance Default PlotterOptions where
+  def =
+    PlotterOptions
+    { maxDrawRate = 40
     }

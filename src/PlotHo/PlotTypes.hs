@@ -1,15 +1,15 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language GADTs #-}
 {-# LANGUAGE PackageImports #-}
-{-# Language TemplateHaskell #-}
 
 module PlotHo.PlotTypes
        ( AxisType(..)
        , Axes(..)
        , Channel(..)
        , Channel'(..)
+       , Element(..)
+       , Element'(..)
        , GraphComms(..)
-       , GraphInfo(..)
        , ListViewInfo(..)
        , MarkedState(..)
        , PlotterOptions(..)
@@ -17,16 +17,14 @@ module PlotHo.PlotTypes
        , XY(..)
        , debug
        , defaultHistoryRange
-       , xaxis, yaxis
        ) where
 
 import qualified Control.Concurrent as CC
-import Control.Lens
 import Control.Monad.IO.Class ( MonadIO ) -- , liftIO )
 import Data.Default.Class ( Default(..) )
-import Data.Tree ( Tree )
 import Data.IORef ( IORef )
 import qualified Data.Map.Strict as M
+import Data.Tree ( Tree )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 
 debug :: MonadIO m => String -> m ()
@@ -36,20 +34,33 @@ debug = const (return ())
 data MarkedState =
   On | Off | Inconsistent deriving (Eq, Show)
 
-data ListViewInfo a =
-  ListViewInfo
-  { lviName :: ![String]
-  , lviTypeOrGetter :: !(Either String (a -> [[(Double,Double)]]))
-  , lviMarked :: !MarkedState
-  }
+data Element where
+  Element :: Element' a -> Element
 
-instance Show (ListViewInfo a) where
-  show (ListViewInfo n (Left t) m)  = "ListViewInfo " ++ show (n,t,m)
-  show (ListViewInfo n (Right _) m) = "ListViewInfo " ++ show (n,m)
+data Element' a
+  = Element'
+    { eChannel :: Channel' a
+    , eMsgStore :: CC.MVar (Maybe (a, Maybe (SignalTree a)))
+    , ePlotValueRef :: IORef a
+    , eIndex :: Int
+    }
 
-type SignalTree a = [Tree ( [String]
-                          , Either String (a -> [[(Double, Double)]])
-                          )]
+data ListViewInfo where
+  ListViewInfo ::
+    { lviName :: ![String]
+    , lviTypeOrGetter :: !(Either String (a -> [[(Double,Double)]]))
+    , lviMarked :: !MarkedState
+    , lviPlotValueRef :: IORef a
+    } -> ListViewInfo
+
+instance Show ListViewInfo where
+  show (ListViewInfo n (Left t) m _)  = "ListViewInfo " ++ show (n,t,m)
+  show (ListViewInfo n (Right _) m _) = "ListViewInfo " ++ show (n,m)
+
+type SignalTree a =
+  Tree ( [String]
+       , Either String (a -> [[(Double, Double)]])
+       )
 
 data AxisType
   = LogScaling
@@ -62,22 +73,14 @@ defaultHistoryRange = (read "Infinity", - read "Infinity")
 
 data XY a
   = XY
-    { _xaxis :: !a
-    , _yaxis :: !a
+    { xaxis :: !a
+    , yaxis :: !a
     }
-makeLenses ''XY
 
 data Axes a
   = Axes
     { axesType :: !(XY AxisType)
     , axesManualRange :: !(XY (a, a))
-    }
-
--- what the graph should draw
-data GraphInfo a
-  = GraphInfo
-    { giGetters :: ![(String, a -> [[(Double,Double)]])]
-    , giTitle :: !(Maybe String)
     }
 
 data GraphComms a

@@ -1,7 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# Language ScopedTypeVariables #-}
-{-# Language DeriveFunctor #-}
-{-# Language MultiParamTypeClasses #-}
 {-# LANGUAGE PackageImports #-}
 
 module PlotHo.Plotter
@@ -67,10 +65,6 @@ runPlotter mplotterOptions channels = do
   -- on close, kill all the windows and threads
   graphWindowsToBeKilled <- CC.newMVar []
 
-  let windows = map (newChannelWidget plotterOptions) channels
-
-  chanWidgets <- mapM (\x -> x graphWindowsToBeKilled) windows
-
   let killEverything :: IO ()
       killEverything = do
         CC.killThread statsThread
@@ -80,6 +74,16 @@ runPlotter mplotterOptions channels = do
   void $ on win Gtk.deleteEvent $ liftIO (killEverything >> return False)
 
   --------------- main widget -----------------
+  -- button to spawn a new graph
+  buttonSpawnGraph <- Gtk.buttonNewWithLabel "new graph"
+  void $ on buttonSpawnGraph Gtk.buttonActivated $ do
+    graphWin <- newGraph plotterOptions channels
+    -- add this window to the list to be killed on exit
+    CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
+
+  -- clear history / max history widget for each channel
+  chanWidgets <- mapM (\(Channel c) -> newChannelWidget c) channels
+
   -- box to hold list of channels
   channelBox <- Gtk.vBoxNew False 4
   Gtk.set channelBox $
@@ -99,6 +103,8 @@ runPlotter mplotterOptions channels = do
   Gtk.set vbox $
     [ Gtk.containerChild := statsLabel
     , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
+    , Gtk.containerChild := buttonSpawnGraph
+    , Gtk.boxChildPacking buttonSpawnGraph := Gtk.PackNatural
     , Gtk.containerChild := scroll
     ]
 
@@ -113,39 +119,28 @@ runPlotter mplotterOptions channels = do
 
 
 -- the list of channels
-newChannelWidget :: PlotterOptions -> Channel -> CC.MVar [Gtk.Window] -> IO Gtk.VBox
-newChannelWidget plotterOptions channel graphWindowsToBeKilled = do
+newChannelWidget :: Channel' a -> IO Gtk.VBox
+newChannelWidget channel = do
   vbox <- Gtk.vBoxNew False 4
 
   nameBox' <- Gtk.hBoxNew False 4
-  nameBox <- labeledWidget ((\(Channel c) -> chanName c) channel) nameBox'
+  nameBox <- labeledWidget (chanName channel) nameBox'
 
   buttonsBox <- Gtk.hBoxNew False 4
 
   -- button to clear history
   buttonClearHistory <- Gtk.buttonNewWithLabel "clear history"
-  void $ on buttonClearHistory Gtk.buttonActivated $ do
-    let clearHistory (Channel (Channel' {chanClearHistory = Nothing})) =
-          putStrLn "not clearing history because that doesn't make sense for this type of data"
-        clearHistory (Channel c@(Channel' {chanClearHistory = Just clear})) = do
-          mlatestValue <- CC.takeMVar (chanLatestValueMVar c)
-          case mlatestValue of
-            Nothing -> do
-              putStrLn "not clearing history because no messages has been received"
-              CC.putMVar (chanLatestValueMVar c) mlatestValue
-            Just (latestValue, signalTree) -> do
-              putStrLn $ "clearing history for channel " ++ show (chanName c)
-              CC.putMVar (chanLatestValueMVar c) (Just (clear latestValue, signalTree))
-    clearHistory channel
-
-  -- button to make a new graph
-  buttonNew <- Gtk.buttonNewWithLabel "new graph"
-  void $ on buttonNew Gtk.buttonActivated $ do
-    graphWin <- newGraph plotterOptions channel
-
-    -- add this window to the list to be killed on exit
-    CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
-
+  void $ on buttonClearHistory Gtk.buttonActivated $ case chanClearHistory channel of
+    Nothing -> putStrLn "not clearing history because that doesn't make sense for this type of data"
+    Just clearHistory -> do
+      mlatestValue <- CC.takeMVar (chanLatestValueMVar channel)
+      case mlatestValue of
+        Nothing -> do
+          putStrLn "not clearing history because no messages has been received"
+          CC.putMVar (chanLatestValueMVar channel) mlatestValue
+        Just (latestValue, signalTree) -> do
+          putStrLn $ "clearing history for channel " ++ show (chanName channel)
+          CC.putMVar (chanLatestValueMVar channel) (Just (clearHistory latestValue, signalTree))
 
   -- entry to set history length
   maxHistoryEntryAndLabel <- Gtk.hBoxNew False 4
@@ -163,7 +158,7 @@ newChannelWidget plotterOptions channel graphWindowsToBeKilled = do
           Nothing ->
             putStrLn ("max history: couldn't make an Int out of \"" ++ show txt ++ "\"") >> reset
           Just 0  -> putStrLn ("max history: must be greater than 0") >> reset
-          Just k  -> IORef.writeIORef ((\(Channel c) -> chanMaxHistory c) channel) k
+          Just k  -> IORef.writeIORef (chanMaxHistory channel) k
 
   void $ on maxHistoryEntry Gtk.entryActivate updateMaxHistory
   updateMaxHistory
@@ -179,9 +174,7 @@ newChannelWidget plotterOptions channel graphWindowsToBeKilled = do
 
   -- put all the buttons/entries together
   Gtk.set buttonsBox
-    [ Gtk.containerChild := buttonNew
-    , Gtk.boxChildPacking buttonNew := Gtk.PackNatural
-    , Gtk.containerChild := buttonClearHistory
+    [ Gtk.containerChild := buttonClearHistory
     , Gtk.boxChildPacking buttonClearHistory := Gtk.PackNatural
     , Gtk.containerChild := maxHistoryEntryAndLabel
     , Gtk.boxChildPacking maxHistoryEntryAndLabel := Gtk.PackNatural

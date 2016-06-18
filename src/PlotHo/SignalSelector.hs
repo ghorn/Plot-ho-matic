@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE PackageImports #-}
 
@@ -8,39 +9,47 @@ module PlotHo.SignalSelector
        ) where
 
 import qualified Control.Concurrent as CC
-import Control.Monad ( void, when )
-import Data.Either ( isRight )
+import Control.Monad ( unless, void, when )
+import Data.IORef ( IORef, readIORef  )
 import Data.List ( foldl', intercalate )
 import qualified Data.Map as M
 import Data.Maybe ( isNothing, fromJust )
+import Data.Tree ( Tree )
 import qualified Data.Tree as Tree
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 
 import PlotHo.PlotTypes
-       ( GraphInfo(..), ListViewInfo(..)
-       , MarkedState(..), SignalTree )
 
-data SignalSelector a
+data SignalSelector
   = SignalSelector
     { ssTreeView :: Gtk.TreeView
-    , ssRebuildSignalTree :: SignalTree a -> IO ()
-    , ssReadGraphInfo :: IO (GraphInfo a)
+    , ssRebuildSignalTree :: forall a . Element' a -> SignalTree a -> IO ()
+    , ssToPlotValues :: IO (Maybe String, [(String, [[(Double, Double)]])])
     }
 
-newSignalSelectorArea ::
-  forall a . IO () -> IO (SignalSelector a)
-newSignalSelectorArea redraw = do
+newSignalSelectorArea :: [Element] -> IO () -> IO SignalSelector
+newSignalSelectorArea elems redraw = do
   -- mvar with all the user input
-  graphInfoMVar <-
-    CC.newMVar
-    GraphInfo
-    { giGetters = []
-    , giTitle = Nothing
-    } :: IO (CC.MVar (GraphInfo a))
+  graphInfoMVar <- CC.newMVar (Nothing, [])
 
-  treeStore <- Gtk.treeStoreNew []
+  let initialForest :: [Tree ListViewInfo]
+      initialForest = map (\(Element e) -> toNode e)  elems
+        where
+          toNode :: Element' a -> Tree ListViewInfo
+          toNode element =
+            Tree.Node
+            { Tree.rootLabel =
+                ListViewInfo
+                { lviName = [chanName (eChannel element)]
+                , lviMarked = Off
+                , lviTypeOrGetter = Left ""
+                , lviPlotValueRef = ePlotValueRef element
+                }
+            , Tree.subForest = []
+            }
+  treeStore <- Gtk.treeStoreNew initialForest
   treeview <- Gtk.treeViewNewWithModel treeStore
 
   Gtk.treeViewSetHeadersVisible treeview True
@@ -58,7 +67,7 @@ newSignalSelectorArea redraw = do
   Gtk.treeViewColumnPackStart colSignal rendererSignal True
   Gtk.treeViewColumnPackStart colVisible rendererVisible True
 
-  let showName :: Either String (a -> [[(Double, Double)]]) -> [String] -> String
+  let showName :: Either String b -> [String] -> String
       -- show a getter name
       showName (Right _) (name:_) = name
       showName (Right _) [] = error "showName on field got an empty list"
@@ -86,28 +95,31 @@ newSignalSelectorArea redraw = do
   void $ Gtk.treeViewAppendColumn treeview colSignal
   void $ Gtk.treeViewAppendColumn treeview colVisible
 
-  let -- update the graph information
-      updateGraphInfo = do
+  let -- traverse the whole graph and update the list of getters and the title
+      updateGettersAndTitle = do
         -- first get all trees
         let getTrees k = do
               tree' <- Gtk.treeStoreLookup treeStore [k]
               case tree' of Nothing -> return []
                             Just tree -> fmap (tree:) (getTrees (k+1))
         theTrees <- getTrees 0
-        let fromRight (Right r) = r
-            fromRight (Left _) =  error "PlotHo GraphWidget: fromRight got Left, this should be impossible"
-            newGetters0 :: [([String], a -> [[(Double, Double)]])]
-            newGetters0 = [ (lviName lvi, fromRight $ lviTypeOrGetter lvi)
-                          | lvi <- concatMap Tree.flatten theTrees
-                          , lviMarked lvi == On
-                          , isRight (lviTypeOrGetter lvi)
-                          ]
+        let newGetters0 :: [([String], IO [[(Double, Double)]])]
+            newGetters0 =
+              [ (name, getter <$> readIORef plotValueRef)
+              | ListViewInfo
+                  { lviName = name
+                  , lviTypeOrGetter = Right getter
+                  , lviMarked = On
+                  , lviPlotValueRef = plotValueRef
+                  } <- concatMap Tree.flatten theTrees
+              ]
 
-        let newGetters :: [(String, a -> [[(Double, Double)]])]
+        let newGetters :: [(String, IO [[(Double, Double)]])]
             newTitle :: Maybe String
             (newGetters, newTitle) = gettersAndTitle newGetters0
 
-        void $ CC.swapMVar graphInfoMVar (GraphInfo {giGetters = newGetters, giTitle = newTitle})
+        void $ newTitle `seq` newGetters `seq`
+          CC.swapMVar graphInfoMVar (newTitle, newGetters)
 
       i2p i = Gtk.treeModelGetPath treeStore i
       p2i p = do
@@ -161,74 +173,99 @@ newSignalSelectorArea redraw = do
     -- toggle the check mark
     val <- Gtk.treeStoreGetValue treeStore treePath
     case val of
-      (ListViewInfo _ (Left _) Off) ->
+      (ListViewInfo {lviTypeOrGetter = Left _, lviMarked = Off}) ->
         changeSelfAndChildren (\lvi -> lvi {lviMarked = On}) treePath
-      (ListViewInfo _ (Left _) On) ->
+      (ListViewInfo {lviTypeOrGetter = Left _, lviMarked = On}) ->
         changeSelfAndChildren (\lvi -> lvi {lviMarked = Off}) treePath
-      (ListViewInfo _ (Left _) Inconsistent) ->
+      (ListViewInfo {lviTypeOrGetter = Left _, lviMarked =Inconsistent}) ->
         changeSelfAndChildren (\lvi -> lvi {lviMarked = On}) treePath
-      lvi@(ListViewInfo _ (Right _) On) ->
+      lvi@(ListViewInfo {lviTypeOrGetter = Right _, lviMarked = On}) ->
         Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = Off}
-      lvi@(ListViewInfo _ (Right _) Off) ->
+      lvi@(ListViewInfo {lviTypeOrGetter = Right _, lviMarked = Off}) ->
         Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = On}
-      (ListViewInfo _ (Right _) Inconsistent) -> error "cell getter can't be inconsistent"
+      (ListViewInfo {lviTypeOrGetter = Right _, lviMarked = Inconsistent}) ->
+        error "cell getter can't be inconsistent"
 
     fixInconsistent treePath
-    updateGraphInfo
+    updateGettersAndTitle
     redraw
 
-  let getTopForest = do
-        nTopLevelNodes <- Gtk.treeModelIterNChildren treeStore Nothing
-        mnodes <- mapM (Gtk.treeModelIterNthChild treeStore Nothing) (take nTopLevelNodes [0..])
-        let treeFromJust (Just x) = i2p x >>= Gtk.treeStoreGetTree treeStore
-            treeFromJust Nothing = error "missing top level node"
-        mapM treeFromJust mnodes
+  let -- rebuild the signal tree
+      rebuildSignalTree :: forall a . Element' a -> SignalTree a -> IO ()
+      rebuildSignalTree element meta = do
+        let channel = eChannel element
+            elementIndex = eIndex element
+        putStrLn $ "rebuilding signal tree for " ++ show (chanName channel)
 
-      -- rebuild the signal tree
-      rebuildSignalTree :: [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))]
-                           -> IO ()
-      rebuildSignalTree meta = do
-        putStrLn "rebuilding signal tree"
+        mtreeIter <- Gtk.treeModelIterNthChild treeStore Nothing elementIndex
 
-        oldTrees <- getTopForest
-        let _ = oldTrees :: [Tree.Tree (ListViewInfo a)]
+        treePath <- case mtreeIter of
+          Nothing -> error $ "rebuildSignalTree: error looking up channel index " ++ show elementIndex
+          Just treeIter -> i2p treeIter
 
-            merge :: forall b
-                     . [Tree.Tree (ListViewInfo b)]
-                     -> [Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))]
-                     -> [Tree.Tree (ListViewInfo a)]
+        unless (treePath == [elementIndex]) $ error "rebuildSignalTree: I don't understand tree paths"
+
+        moldTree <- Gtk.treeStoreLookup treeStore treePath
+        oldTree <- case moldTree of
+          Nothing -> error "rebuildSignalTree: the old tree wasn't found"
+          Just r -> return r
+        let _ = oldTree :: Tree ListViewInfo
+
+            plotValueRef :: IORef a
+            plotValueRef = ePlotValueRef element
+
+            merge :: [Tree ListViewInfo]
+                     -> [Tree ([String], Either String (a -> [[(Double, Double)]]))]
+                     -> [Tree ListViewInfo]
             merge old new = map convert new
               where
-                oldMap :: M.Map ([String], Maybe String) (ListViewInfo b, [Tree.Tree (ListViewInfo b)])
+                oldMap :: M.Map ([String], Maybe String) (ListViewInfo, [Tree ListViewInfo])
                 oldMap = M.fromList $ map f old
                   where
                     f (Tree.Node lvi lvis) = ((lviName lvi, maybeType), (lvi, lvis))
                       where
-                        maybeType = case lviTypeOrGetter lvi of
-                          Left typ -> Just typ
-                          Right _ -> Nothing
+                        maybeType = case lvi of
+                          ListViewInfo {lviTypeOrGetter = Left typ} -> Just typ
+                          _ -> Nothing
 
-                convert :: Tree.Tree ([String], Either String (a -> [[(Double, Double)]]))
-                           -> Tree.Tree (ListViewInfo a)
+                convert :: Tree ([String], Either String (a -> [[(Double, Double)]]))
+                           -> Tree ListViewInfo
                 convert (Tree.Node (name, tog) others) = case M.lookup (name, maybeType) oldMap of
-                  Nothing -> Tree.Node (ListViewInfo name tog Off) (merge [] others)
-                  Just (lvi, oldOthers) -> Tree.Node (ListViewInfo name tog (lviMarked lvi)) (merge oldOthers others)
+                  Nothing -> Tree.Node (ListViewInfo name tog Off plotValueRef) (merge [] others)
+                  Just (lvi, oldOthers) ->
+                    Tree.Node (ListViewInfo name tog (lviMarked lvi) plotValueRef) (merge oldOthers others)
                   where
                     maybeType = case tog of
                       Left r -> Just r
                       Right _ -> Nothing
 
-            newTrees = merge oldTrees meta
+            newTree :: Tree ListViewInfo
+            newTree = case merge [oldTree] [meta] of
+              [r] -> r
+              [] -> error "rebuildSignalTree: merged old tree with new tree and got []"
+              _ -> error "rebuildSignalTree: merged old tree with new tree and got a forest"
 
-        Gtk.treeStoreClear treeStore
-        Gtk.treeStoreInsertForest treeStore [] 0 newTrees
-        updateGraphInfo
+        removed <- Gtk.treeStoreRemove treeStore treePath
+        unless removed $ error "rebuildSignalTree: error removing old tree"
+        Gtk.treeStoreInsertTree treeStore [] elementIndex newTree
+        updateGettersAndTitle
+
+      toValues = do
+        (mtitle, getters) <- CC.readMVar graphInfoMVar
+        let _ = getters :: [(String, IO [[(Double, Double)]])]
+
+            execGetter :: (String, IO [[(Double, Double)]]) -> IO (String, [[(Double, Double)]])
+            execGetter (name, get) = do
+              got <- get
+              return (name, got)
+        gotten <- mapM execGetter getters
+        return (mtitle, gotten)
 
   return
     SignalSelector
     { ssTreeView = treeview
     , ssRebuildSignalTree = rebuildSignalTree
-    , ssReadGraphInfo = CC.readMVar graphInfoMVar
+    , ssToPlotValues = toValues
     }
 
 

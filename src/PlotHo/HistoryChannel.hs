@@ -24,12 +24,11 @@ import qualified Data.Sequence as S
 import Accessors
 
 import PlotHo.Channel ( newChannel' )
-import PlotHo.PlotTypes ( Channel(..), Channel'(..), debug )
+import PlotHo.PlotTypes ( Channel(..), Channel'(..), SignalTree, debug )
 
-type Meta = [Tree ([String], Either String Int)]
+type Meta = Tree ([String], Either String Int)
 
 newtype History a = History (S.Seq (a, Int, NominalDiffTime))
-type HistorySignalTree a = Tree.Forest ([String], Either String (History a -> [[(Double, Double)]]))
 data History' = History' !Bool !(S.Seq (Double, Vector Double)) !Meta
 
 data XAxisType =
@@ -38,21 +37,20 @@ data XAxisType =
   | XAxisCount -- ^ message index
   | XAxisCount0 -- ^ message index, normalized to 0 (to reduce plot jitter)
 
-historySignalTree :: forall a . Lookup a => XAxisType -> HistorySignalTree a
-historySignalTree axisType = case accessors of
-  Left _ -> error "historySignalTree: got a Field right away"
-  acc -> Tree.subForest $ head $ makeSignalTree' [] acc
+historySignalTree :: forall a . Lookup a => XAxisType -> String -> SignalTree (History a)
+historySignalTree axisType topName = makeSignalTree' [topName] accessors
   where
-    makeSignalTree' :: [String] -> AccessorTree a -> HistorySignalTree a
+    makeSignalTree' :: [String] -> AccessorTree a -> SignalTree (History a)
     makeSignalTree' myFieldName (Right (GAData _ (GAConstructor cname children))) =
-      [Tree.Node
-       (reverse myFieldName, Left cname)
-       (concatMap (\(getterName, child) -> makeSignalTree' (fromMName getterName:myFieldName) child) children)
-      ]
+      Tree.Node
+      (reverse myFieldName, Left cname)
+      (map (\(getterName, child) -> makeSignalTree' (fromMName getterName:myFieldName) child) children)
+
     makeSignalTree' myFieldName (Right (GAData _ (GASum enum))) =
-      [Tree.Node (reverse myFieldName, Right (toHistoryGetter (fromIntegral . eToIndex enum))) []]
+      Tree.Node (reverse myFieldName, Right (toHistoryGetter (fromIntegral . eToIndex enum))) []
     makeSignalTree' myFieldName (Left field) =
-      [Tree.Node (reverse myFieldName, Right (toHistoryGetter (toDoubleGetter field))) []]
+      Tree.Node (reverse myFieldName, Right (toHistoryGetter (toDoubleGetter field))) []
+
     fromMName (Just x) = x
     fromMName Nothing = "()"
 
@@ -101,20 +99,16 @@ newHistoryChannel ::
 newHistoryChannel name xaxisType = do
   time0 <- getCurrentTime >>= IORef.newIORef
   counter <- IORef.newIORef 0
-  let toSignalTree :: History a -> [Tree ( [String]
-                                         , Either String (History a -> [[(Double, Double)]])
-                                         )]
-      toSignalTree = const (historySignalTree xaxisType)
+  let toSignalTree :: History a -> SignalTree (History a)
+      toSignalTree = const (historySignalTree xaxisType name)
 
       sameSignalTree _ _ = True
 
   (channel', newHistoryMessage) <- newChannel' name sameSignalTree toSignalTree
     :: IO (Channel' (History a), History a -> IO ())
 
-  -- Put the first message immediately for two reasons:
-  -- 1. Can always assume the MVar is full and save a litle logic.
-  -- 2. Immediately build the signal tree so that the user can see it
-  --    without waiting for the first message.
+  -- Put the first message immediately in order to immediately build the signal tree
+  -- so that the user can see it without waiting for the first message.
   newHistoryMessage (History mempty)
 
   let newMessage :: a -> Bool -> IO ()
@@ -160,13 +154,12 @@ newHistoryChannel' ::
   -> IO (Channel, Double -> Vector Double -> Maybe Meta -> IO ())
 newHistoryChannel' name = do
   let toSignalTree :: History'
-                      -> [Tree ( [String]
-                               , Either String (History' -> [[(Double, Double)]])
-                               )]
-      toSignalTree (History' _ _ meta) = map (fmap f) meta
+                      -> Tree ( [String]
+                              , Either String (History' -> [[(Double, Double)]])
+                              )
+      toSignalTree (History' _ _ meta) = fmap f meta
         where
-          f :: ([String], Either String Int)
-               -> ([String], Either String (History' -> [[(Double, Double)]]))
+          f :: ([String], Either String Int) -> ([String], Either String (History' -> [[(Double, Double)]]))
           f (n0, Left n1) = (n0, Left n1)
           f (n0, Right k) = (n0, Right g)
             where

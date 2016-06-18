@@ -8,8 +8,9 @@ module PlotHo.GraphWidget
 
 import Control.Concurrent ( MVar )
 import qualified Control.Concurrent as CC
-import Control.Monad ( forever, void, when )
+import Control.Monad ( forever, void, when, zipWithM )
 import Control.Monad.IO.Class ( liftIO )
+import Data.IORef ( newIORef, writeIORef )
 import Data.List ( foldl' )
 import qualified Data.Map.Strict as M
 import Data.Time.Clock ( getCurrentTime, diffUTCTime )
@@ -26,33 +27,41 @@ import PlotHo.OptionsWidget ( OptionsWidget(..), makeOptionsWidget )
 import PlotHo.PlotTypes
 import PlotHo.SignalSelector ( SignalSelector(..), newSignalSelectorArea )
 
--- make a new graph window
-newGraph ::
-  PlotterOptions
-  -> Channel -> IO Gtk.Window
-newGraph opts
-  (Channel
-   (Channel'
-    { chanName = name
-    , chanLatestValueMVar = latestValueMVar
-    , chanGraphCommsMap = graphCommsMap
-    })) = newGraph' opts name (CC.readMVar latestValueMVar) graphCommsMap
+
+toElement' :: Int -> Channel' a -> IO (Element' a)
+toElement' index channel = do
+  mlatestValue <- CC.readMVar (chanLatestValueMVar channel)
+  let latestValue = case mlatestValue of
+        Nothing -> Nothing
+        Just (val, signalTree) -> Just (val, Just signalTree)
+
+  msgStore <- CC.newMVar latestValue
+  plotValueRef <- newIORef $
+    error $ unlines
+    [ "The impossible happened."
+    , "Element plot value reference is initially undefined until a signal tree and data come in."
+    , "There is no getter. How was this accessed?"
+    ]
+
+  return
+    Element'
+    { eChannel = channel
+    , eMsgStore = msgStore
+    , eIndex = index
+    , ePlotValueRef = plotValueRef
+    }
 
 
 -- make a new graph window
-newGraph' ::
-  forall a
-  . PlotterOptions
-  -> String
-  -> IO (Maybe (a, SignalTree a))
-  -> CC.MVar (M.Map Gtk.Window (GraphComms a))
-  -> IO Gtk.Window
-newGraph' options channame readLatestChannelValue graphCommsMap = do
+newGraph :: PlotterOptions -> [Channel] -> IO Gtk.Window
+newGraph options channels = do
   win <- Gtk.windowNew
+
+  elements <- zipWithM (\k (Channel c) -> Element <$> toElement' k c) [0..] channels
 
   void $ Gtk.set win
     [ Gtk.containerBorderWidth := 8
-    , Gtk.windowTitle := channame
+    , Gtk.windowTitle := "plot-ho-graphic"
     ]
 
   -- chart drawing area
@@ -77,16 +86,10 @@ newGraph' options channame readLatestChannelValue graphCommsMap = do
         void $ CC.swapMVar needRedrawMVar True
         Gtk.postGUIAsync (Gtk.widgetQueueDraw chartCanvas)
 
-  signalSelector <- newSignalSelectorArea redraw
+  signalSelector <- newSignalSelectorArea elements redraw
 
   largestRangeMVar <- CC.newMVar (XY defaultHistoryRange defaultHistoryRange)
   optionsWidget <- makeOptionsWidget largestRangeMVar redraw
-
-  msgStore <- (CC.newMVar =<<) $ do
-    latestChannelValue <- readLatestChannelValue
-    return $ case latestChannelValue of
-      Nothing -> Nothing
-      Just (val, signalTree) -> Just (val, Just signalTree)
 
   let handleDraw :: Render ()
       handleDraw = do
@@ -123,29 +126,39 @@ newGraph' options channame readLatestChannelValue graphCommsMap = do
                              "needFirstDrawOrResizeDraw"
             _ -> return () -- (impossible)
 
+
+          -- Now we have to take the latest data from the channels and put it in the IORefs
+          -- so that the signal tree can apply the getters. Phew.
+          let stageDataFromElement :: forall a . Element' a -> IO ()
+              stageDataFromElement element = do
+                let msgStore = eMsgStore element
+                -- get the latest data, just block if they're not available
+                mdatalog <- CC.takeMVar msgStore
+                case mdatalog of
+                  -- no data yet, do nothing
+                  Nothing -> CC.putMVar msgStore mdatalog
+                  Just (datalog, msignalTree) -> do
+                    case msignalTree of
+                      -- No new signal tree, no action necessary
+                      Nothing -> return ()
+                      -- If there is a new signal tree, we have to merge it with the old one.
+                      Just newSignalTree -> case signalSelector of
+                        SignalSelector {ssRebuildSignalTree = rebuildSignalTree} ->
+                          rebuildSignalTree element newSignalTree
+
+                    -- write the data to the IORef so that the getters get the right stuff
+                    writeIORef (ePlotValueRef element) datalog
+
+                    -- Put the data back. Put Nothing to signify that the signal tree is up to date.
+                    CC.putMVar msgStore (Just (datalog, Nothing))
+
+          -- stage the values
+          mapM_ (\(Element e) -> stageDataFromElement e) elements
+
           -- get the latest plot points
-          (mtitle, namedPlotPoints) <- do
-            -- get the latest data, just block if they're not available
-            mdatalog <- CC.takeMVar msgStore
-            case mdatalog of
-              -- no data yet, return [] but do the loop as usual
-              Nothing -> do
-                CC.putMVar msgStore mdatalog
-                return (Nothing, [])
-              Just (datalog, msignalTree) -> do
-                -- If there is a new signal tree, we have to merge it with the old one.
-                case msignalTree of
-                  Just newSignalTree -> ssRebuildSignalTree signalSelector newSignalTree
-                  Nothing -> return ()
-
-                -- Put the data back. Put Nothing to signify that the signal tree is up to date.
-                CC.putMVar msgStore (Just (datalog, Nothing))
-
-                -- Rebuilding the signal tree if necessary has now made the getters
-                -- safe to apply to the latest data.
-                gi <- ssReadGraphInfo signalSelector
-
-                return (giTitle gi, map (fmap (\g -> g datalog)) (giGetters gi))
+          -- Now we have rebuild the signal tree if necessary, and staged the latest plot values
+          -- To the geter IORefs. It is safe to get the plot points.
+          (mtitle, namedPlotPoints) <- ssToPlotValues signalSelector
 
           debug "handleDraw: got title and plot points"
           let -- update the min/max plot ranges
@@ -216,17 +229,23 @@ newGraph' options channame readLatestChannelValue graphCommsMap = do
     [ Gtk.containerChild := hboxEverything ]
 
   -- add this window to the set of windows that get redraw signals on new messages
-  let graphComms =
-        GraphComms
-        { gcRedrawSignal = redraw
-        , gcMsgStore = msgStore
-        }
-  CC.modifyMVar_ graphCommsMap (return . M.insert win graphComms)
+  let registerElement :: Element' a -> IO ()
+      registerElement element = do
+        let graphComms =
+              GraphComms
+              { gcRedrawSignal = redraw
+              , gcMsgStore = eMsgStore element
+              }
+        CC.modifyMVar_ (chanGraphCommsMap (eChannel element)) (return . M.insert win graphComms)
+  mapM_ (\(Element e) -> registerElement e) elements
 
   -- when the window is closed, remove it from the set which get redraw signals on new messages
   void $ on win Gtk.deleteEvent $ do
     debug "removing window from redrawSignalMap"
-    liftIO $ CC.modifyMVar_ graphCommsMap (return . M.delete win)
+    let removeElement :: Element' a -> IO ()
+        removeElement element = do
+          CC.modifyMVar_ (chanGraphCommsMap (eChannel element)) (return . M.delete win)
+    liftIO $ mapM_ (\(Element e) -> removeElement e) elements
     return False
 
   -- show the window and return

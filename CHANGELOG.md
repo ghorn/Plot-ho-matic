@@ -5,6 +5,7 @@ HEAD
 * Replace the Plotter monad with a monomorphic (GADT) Channel type.
 * Major reorganization to trigger off of GHC runtime instead of GTK events
 * Require non-threaded RTS
+* Plot all channels on each graph
 
 0.9.0.10
 ---

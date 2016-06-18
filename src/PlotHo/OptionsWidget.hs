@@ -8,7 +8,6 @@ module PlotHo.OptionsWidget
        ) where
 
 import qualified Control.Concurrent as CC
-import Control.Lens
 import Control.Monad ( void )
 import Data.IORef ( newIORef, readIORef, writeIORef )
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
@@ -100,9 +99,9 @@ makeOptionsWidget largestRangeMVar redraw = do
   resetYHistoryButton <- Gtk.buttonNewWithLabel "reset Y range"
 
   void $ on resetXHistoryButton Gtk.buttonActivated $
-    CC.modifyMVar_ largestRangeMVar (return . (xaxis .~ defaultHistoryRange))
+    CC.modifyMVar_ largestRangeMVar (\xy -> return (xy {xaxis = defaultHistoryRange}))
   void $ on resetYHistoryButton Gtk.buttonActivated $
-    CC.modifyMVar_ largestRangeMVar (return . (yaxis .~ defaultHistoryRange))
+    CC.modifyMVar_ largestRangeMVar (\xy -> return (xy {yaxis = defaultHistoryRange}))
 
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4

@@ -7,9 +7,8 @@ module PlotHo.Channel
 
 import qualified Control.Concurrent as CC
 import qualified Data.IORef as IORef
-import Data.Tree ( Tree )
 
-import PlotHo.PlotTypes ( Channel(..), Channel'(..), GraphComms(..), debug )
+import PlotHo.PlotTypes ( Channel(..), Channel'(..), GraphComms(..), SignalTree, debug )
 
 -- | This is the general interface to plot whatever you want.
 -- Use this when you want to give the whole time series in one go, rather than one at a time
@@ -20,7 +19,7 @@ newChannel ::
   forall a
   . String -- ^ channel name
   -> (a -> a -> Bool) -- ^ Is the signal tree the same? This is used for instance if signals have changed and the plotter needs to rebuild the signal tree. This lets you keep the plotter running and change other programs which send messages to the plotter.
-  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))]) -- ^ how to build the signal tree
+  -> (a -> SignalTree a) -- ^ how to build the signal tree
   -> IO (Channel, a -> IO ()) -- ^ Return a channel and a "new message" function. You should for a thread which receives messages and calls this action.
 newChannel name sameSignalTree toSignalTree = do
   (channel', newMessage) <- newChannel' name sameSignalTree toSignalTree
@@ -31,7 +30,7 @@ newChannel' ::
   forall a
   . String
   -> (a -> a -> Bool)
-  -> (a -> [Tree ([String], Either String (a -> [[(Double, Double)]]))])
+  -> (a -> SignalTree a)
   -> IO (Channel' a, a -> IO ())
 newChannel' name sameSignalTree toSignalTree = do
   lastMsgMVar <- CC.newMVar Nothing

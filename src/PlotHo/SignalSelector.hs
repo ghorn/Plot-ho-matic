@@ -287,28 +287,27 @@ gettersAndTitle fullGetters =
     gettersWithPrefixRemoved :: [([String], a)]
     (titleNames, gettersWithPrefixRemoved) = splitPartialCommonPrefix $ splitCommonPrefixes [] fullGetters
 
+splitCommonPrefixes :: forall a . [String] -> [([String], a)] -> ([String], [([String], a)])
+splitCommonPrefixes titles getters0
+  | any isNothing mheads = (titles, getters0)
+  | otherwise = case heads of
+      [] -> (titles, getters0)
+      (prefix, _):others
+        -- if all prefixes match, do another recursion
+        | all ((prefix ==) . fst) others -> splitCommonPrefixes (prefix:titles) (map snd heads)
+        -- otherwise we're done
+        | otherwise -> (titles, getters0)
+  where
+    mheads :: [Maybe (String, ([String], a))]
+    mheads = map mhead getters0
+
+    heads :: [(String, ([String], a))]
+    heads = map fromJust mheads
+
     -- split out the first element if there is one
     mhead :: ([String], a) -> Maybe (String, ([String], a))
     mhead (x:xs, y) = Just (x, (xs, y))
     mhead ([], _) = Nothing
-
-    splitCommonPrefixes :: [String] -> [([String], a)] -> ([String], [([String], a)])
-    splitCommonPrefixes titles getters0
-      | any isNothing mheads = (titles, getters0)
-      | otherwise = case heads of
-          [] -> (titles, getters0)
-          (prefix, _):others
-            -- if all prefixes match, do another recursion
-            | all ((prefix ==) . fst) others -> splitCommonPrefixes (prefix:titles) (map snd heads)
-            -- otherwise we're done
-            | otherwise -> (titles, getters0)
-      where
-        mheads :: [Maybe (String, ([String], a))]
-        mheads = map mhead getters0
-
-        heads :: [(String, ([String], a))]
-        heads = map fromJust mheads
-
 
 
 -- We've already split out all the common whole strings.

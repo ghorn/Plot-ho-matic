@@ -317,7 +317,7 @@ splitPartialCommonPrefix (wholePrefixes, getters)
   -- if there is no common prefix, do nothing
   | null prefix = (wholePrefixes, getters)
   -- If there is a common prefix, add it to the wholePrefixes and remove it from the next names.
-  | otherwise = (wholePrefixes ++ [prefix], map (\(x,y) -> (removePrefix x, y)) getters)
+  | otherwise = (prefix:wholePrefixes, map (\(x,y) -> (removePrefix x, y)) getters)
   where
     removePrefix :: [String] -> [String]
     removePrefix [] = [] -- No names, I guess don't return anything. I think this is impossible

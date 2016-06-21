@@ -15,6 +15,8 @@ import PlotHo.PlotTypes ( Channel(..), Channel'(..), GraphComms(..), SignalTree,
 -- such as with 'addHistoryChannel'.
 -- Using types or data, you must encode the signal tree with the message so that
 -- the plotter can build you the nice signal tree.
+--
+-- For examples of this, see the implementation of 'PlotHo.HistoryChannel.addHistoryChannel' and 'PlotHo.HistoryChannel.addHistoryChannel''.
 newChannel ::
   forall a
   . String -- ^ channel name
@@ -26,6 +28,8 @@ newChannel name sameSignalTree toSignalTree = do
   return (Channel channel', newMessage)
 
 -- | Monomorphic version of 'newChannel'. Must be wrapped in 'Channel' in order to plot.
+--
+-- For examples of this, see the implementation of 'PlotHo.HistoryChannel.addHistoryChannel' and 'PlotHo.HistoryChannel.addHistoryChannel''.
 newChannel' ::
   forall a
   . String

@@ -1,4 +1,4 @@
-HEAD
+0.10.0.0
 ---
 * Better error messages when the "impossible" happens :b
 * Also combine partial common prefixes for plot titles/legends

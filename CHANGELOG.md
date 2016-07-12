@@ -1,3 +1,8 @@
+0.10.1.0
+---
+* set default xaxis types
+* move reset axis range buttons higher
+
 0.10.0.0
 ---
 * Better error messages when the "impossible" happens :b

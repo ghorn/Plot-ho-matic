@@ -105,18 +105,18 @@ makeOptionsWidget plotterOptions largestRangeMVar redraw = do
   vbox <- Gtk.vBoxNew False 4
 
   Gtk.set vbox
-    [ Gtk.containerChild := xScalingBox
+    [ Gtk.containerChild := resetXHistoryButton
+    , Gtk.boxChildPacking   resetXHistoryButton := Gtk.PackNatural
+    , Gtk.containerChild := xScalingBox
     , Gtk.boxChildPacking   xScalingBox := Gtk.PackNatural
     , Gtk.containerChild := xRangeBox
     , Gtk.boxChildPacking   xRangeBox := Gtk.PackNatural
-    , Gtk.containerChild := resetXHistoryButton
-    , Gtk.boxChildPacking   resetXHistoryButton := Gtk.PackNatural
+    , Gtk.containerChild := resetYHistoryButton
+    , Gtk.boxChildPacking   resetYHistoryButton := Gtk.PackNatural
     , Gtk.containerChild := yScalingBox
     , Gtk.boxChildPacking   yScalingBox := Gtk.PackNatural
     , Gtk.containerChild := yRangeBox
     , Gtk.boxChildPacking   yRangeBox := Gtk.PackNatural
-    , Gtk.containerChild := resetYHistoryButton
-    , Gtk.boxChildPacking   resetYHistoryButton := Gtk.PackNatural
     ]
 
   return

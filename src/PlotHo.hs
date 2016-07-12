@@ -13,6 +13,7 @@ module PlotHo
          runPlotter
        , PlotterOptions(..)
        , Channel
+       , AxisType(..)
        , XAxisType(..)
        , newHistoryChannel
        , Meta
@@ -29,7 +30,7 @@ import Data.Default.Class ( def )
 import PlotHo.Channel ( newChannel )
 import PlotHo.HistoryChannel ( Meta, XAxisType(..), newHistoryChannel, newHistoryChannel' )
 import PlotHo.Plotter ( runPlotter )
-import PlotHo.PlotTypes ( Channel, PlotterOptions(..) )
+import PlotHo.PlotTypes ( AxisType(..), Channel, PlotterOptions(..) )
 
 -- $simple
 --

@@ -24,8 +24,8 @@ data OptionsWidget
     , owGetAxes :: IO (Axes Double)
     }
 
-makeOptionsWidget :: CC.MVar (XY (Double, Double)) -> IO () -> IO OptionsWidget
-makeOptionsWidget largestRangeMVar redraw = do
+makeOptionsWidget :: PlotterOptions -> CC.MVar (XY (Double, Double)) -> IO () -> IO OptionsWidget
+makeOptionsWidget plotterOptions largestRangeMVar redraw = do
   -- user selectable range
   xRangeEntry <- Gtk.entryNew
   yRangeEntry <- Gtk.entryNew
@@ -69,12 +69,7 @@ makeOptionsWidget largestRangeMVar redraw = do
   -- linear or log scaling on the x and y axis?
   let updateScaling scalingSelector scalingRef = do
         k <- Gtk.comboBoxGetActive scalingSelector
-        _ <- case k of
-          0 -> writeIORef scalingRef LinearScalingAutoRange
-          1 -> writeIORef scalingRef LinearScalingHistoryRange
-          2 -> writeIORef scalingRef LinearScalingManualRange
-          3 -> writeIORef scalingRef LogScaling
-          _ -> error "the \"impossible\" happened: scaling comboBox index should be < 4"
+        writeIORef scalingRef (toEnum k)
         redraw
 
   xScalingSelector <- Gtk.comboBoxNewText
@@ -83,13 +78,16 @@ makeOptionsWidget largestRangeMVar redraw = do
         ["linear (auto)", "linear (history)", "linear (manual)", "logarithmic (auto)"]
   mapM_ (Gtk.comboBoxAppendText xScalingSelector . T.pack) scalingOptions
   mapM_ (Gtk.comboBoxAppendText yScalingSelector . T.pack) scalingOptions
-  Gtk.comboBoxSetActive xScalingSelector 0
-  Gtk.comboBoxSetActive yScalingSelector 0
+
+  Gtk.comboBoxSetActive xScalingSelector (fromEnum (defaultXAxis plotterOptions))
+  Gtk.comboBoxSetActive yScalingSelector (fromEnum (defaultYAxis plotterOptions))
+
   xScalingBox <- labeledWidget "x scaling:" xScalingSelector
   yScalingBox <- labeledWidget "y scaling:" yScalingSelector
 
-  xScalingRef <- newIORef LinearScalingAutoRange
-  yScalingRef <- newIORef LinearScalingAutoRange
+  xScalingRef <- newIORef (defaultXAxis plotterOptions)
+  yScalingRef <- newIORef (defaultYAxis plotterOptions)
+
   updateScaling xScalingSelector xScalingRef
   updateScaling yScalingSelector yScalingRef
   void $ on xScalingSelector Gtk.changed (updateScaling xScalingSelector xScalingRef)

@@ -89,7 +89,7 @@ newGraph options channels = do
   signalSelector <- newSignalSelectorArea elements redraw
 
   largestRangeMVar <- CC.newMVar (XY defaultHistoryRange defaultHistoryRange)
-  optionsWidget <- makeOptionsWidget largestRangeMVar redraw
+  optionsWidget <- makeOptionsWidget options largestRangeMVar redraw
 
   let handleDraw :: Render ()
       handleDraw = do

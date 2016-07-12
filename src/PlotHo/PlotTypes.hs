@@ -63,10 +63,11 @@ type SignalTree a =
        )
 
 data AxisType
-  = LogScaling
-  | LinearScalingAutoRange
+  = LinearScalingAutoRange
   | LinearScalingHistoryRange
   | LinearScalingManualRange
+  | LogScaling
+  deriving (Enum)
 
 defaultHistoryRange :: (Double, Double)
 defaultHistoryRange = (read "Infinity", - read "Infinity")
@@ -109,10 +110,14 @@ data Channel' a
 data PlotterOptions
   = PlotterOptions
     { maxDrawRate :: Double -- ^ limit the draw frequency to this number in Hz
+    , defaultXAxis :: AxisType
+    , defaultYAxis :: AxisType
     }
 
 instance Default PlotterOptions where
   def =
     PlotterOptions
     { maxDrawRate = 40
+    , defaultXAxis = LinearScalingAutoRange
+    , defaultYAxis = LinearScalingAutoRange
     }

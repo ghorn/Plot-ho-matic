@@ -1,3 +1,7 @@
+0.11.0.0
+---
+* newHistoryChannel' can now take meta without data
+
 0.10.1.0
 ---
 * set default xaxis types

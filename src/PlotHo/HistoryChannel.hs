@@ -151,7 +151,7 @@ newHistoryChannel name xaxisType = do
 -- If the data structure changes, a new tree should be sent, otherwise there could be indexing errors.
 newHistoryChannel' ::
   String -- ^ channel name
-  -> IO (Channel, Double -> Vector Double -> Maybe Meta -> IO ())
+  -> IO (Channel, Either Meta (Double, Vector Double) -> IO ())
 newHistoryChannel' name = do
   let toSignalTree :: History'
                       -> Tree ( [String]
@@ -177,27 +177,24 @@ newHistoryChannel' name = do
   (channel', newHistoryMessage) <- newChannel' name sameSignalTree toSignalTree
     :: IO (Channel' History', History' -> IO ())
 
-  let newMessage :: Double -> Vector Double -> Maybe Meta -> IO ()
-      newMessage nextTime nextVal maybeMeta = do
-        let val = (nextTime, nextVal)
-
+  let newMessage :: Either Meta (Double, Vector Double) -> IO ()
+      newMessage msg = do
         latestChannelValue <- CC.readMVar (chanLatestValueMVar channel')
-
-        case (latestChannelValue, maybeMeta) of
+        case (latestChannelValue, msg) of
           -- first message and no meta to go with it
-          (Nothing, Nothing) ->
+          (Nothing, Right _) ->
             putStr $ unlines
               [ "WARNING: First message seen by Plot-ho-matic doesn't have signal tree meta-data."
               , "This was probably caused by starting the plotter AFTER sending the first telemetry message."
               , "Try restarting the application sending messages."
               ]
           -- any message with meta is a reset
-          (_, Just meta) -> newHistoryMessage (History' True (S.singleton val) meta)
+          (_, Left meta) -> newHistoryMessage (History' True mempty meta)
           -- later message without meta - no reset
-          (Just (History' _ oldTimeSeries meta, _), Nothing) -> do
+          (Just (History' _ oldTimeSeries meta, _), Right (nextTime, nextVal)) -> do
             maxHistory <- IORef.readIORef (chanMaxHistory channel')
             let newTimeSeries =
-                  S.drop (1 + S.length oldTimeSeries - maxHistory) (oldTimeSeries S.|> val)
+                  S.drop (1 + S.length oldTimeSeries - maxHistory) (oldTimeSeries S.|> (nextTime, nextVal))
             newHistoryMessage (History' False newTimeSeries meta)
 
       clearHistory :: History' -> History'

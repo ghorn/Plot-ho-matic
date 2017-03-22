@@ -14,6 +14,7 @@ import Accessors.Dynamic ( DTree )
 import qualified Control.Concurrent as CC
 import Control.Monad.IO.Class ( liftIO )
 import qualified Data.ByteString.Lazy as BSL
+import Data.IORef ( newIORef, readIORef, writeIORef )
 import Data.Serialize ( encodeLazy, decodeLazy )
 import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
@@ -23,9 +24,12 @@ import System.Glib.Signals ( on )
 import SetHo.LookupTree ( newLookupTreeview )
 
 -- | fire up the the GUI
-runSetter :: String -> DTree -> IO (Maybe DTree) -> IO () -> (DTree -> IO ()) -> IO ()
-runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
+runSetter :: String -> DTree -> IO (Maybe (Int, DTree)) -> IO () -> (Int -> DTree -> IO ()) -> IO ()
+runSetter rootName initialValue userPollForNewMessage sendRequest userCommit = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
+
+  counterRef <- newIORef 0
+  upstreamCounterRef <- newIORef Nothing
 
   _ <- Gtk.initGUI
   _ <- Gtk.timeoutAddFull (CC.yield >> return True) Gtk.priorityDefault 50
@@ -37,15 +41,25 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
                    ]
 
   statsLabel <- Gtk.labelNew (Nothing :: Maybe String)
-  let statsWorker = do
-        CC.threadDelay 500000
-        msg <- if statsEnabled
+  let makeStatsMessage = do
+        statsMsg <- if statsEnabled
                then do
                  stats <- GHC.Stats.getGCStats
                  return $ printf "The current memory usage is %.2f MB"
                    ((realToFrac (GHC.Stats.currentBytesUsed stats) :: Double) /(1024*1024))
                else return "(enable GHC statistics with +RTS -T)"
-        Gtk.postGUISync $ Gtk.labelSetText statsLabel ("Welcome to set-ho-matic!\n" ++ msg)
+        counter <- readIORef counterRef
+        mupstreamCounter <- readIORef upstreamCounterRef
+        let upstreamCount = case mupstreamCounter of
+              Nothing -> "?"
+              Just r -> show r
+            counterMsg = "editing: " ++ show counter ++ " | upstream: " ++ upstreamCount
+        return $ "Welcome to set-ho-matic!\n" ++ statsMsg ++ "\n" ++ counterMsg
+
+      statsWorker = do
+        CC.threadDelay 500000
+        msg <- makeStatsMessage
+        Gtk.postGUISync $ Gtk.labelSetText statsLabel msg
         statsWorker
 
   statsThread <- CC.forkIO statsWorker
@@ -81,6 +95,14 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
                   , Gtk.expanderExpanded := True
                   ]
 
+
+  -- how to commit
+  let commit val = do
+        counter <- readIORef counterRef
+        putStrLn $ "sending settings update " ++ show counter
+        writeIORef counterRef (1 + counter)
+        makeStatsMessage >>= Gtk.labelSetText statsLabel
+        userCommit counter val
 
   -- the signal selector
   (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadFromFile) <-
@@ -132,11 +154,12 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
     , Gtk.boxChildPacking treeviewExpander := Gtk.PackGrow
     ]
 
-  _ <- on buttonCommit Gtk.buttonActivated $ do
-    val <- getLatestStaged
-    commit val
+  _ <- on buttonCommit Gtk.buttonActivated $ (getLatestStaged >>= commit)
 
-  _ <- on buttonRefresh Gtk.buttonActivated sendRequest
+  _ <- on buttonRefresh Gtk.buttonActivated $ do
+    counter <- readIORef counterRef
+    putStrLn $ "sending settings request " ++ show counter
+    sendRequest
 
   _ <- on buttonTakeUpstream Gtk.buttonActivated takeLatestUpstream
 
@@ -144,7 +167,11 @@ runSetter rootName initialValue userPollForNewMessage sendRequest commit = do
         mmsg <- userPollForNewMessage
         case mmsg of
           Nothing -> return ()
-          Just newVal -> receiveNewUpstream newVal
+          Just (upstreamCounter, newVal) -> do
+            putStrLn $ "received settings update " ++ show upstreamCounter
+            writeIORef upstreamCounterRef (Just upstreamCounter)
+            makeStatsMessage >>= Gtk.labelSetText statsLabel
+            receiveNewUpstream newVal
 
   _ <- Gtk.timeoutAddFull (pollForNewMessage >> return True) Gtk.priorityDefault 300
 

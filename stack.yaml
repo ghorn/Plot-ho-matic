@@ -1,4 +1,4 @@
-resolver: lts-6.2
+resolver: lts-8.5
 
 compiler-check: newer-minor
 
@@ -8,7 +8,7 @@ packages:
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps: [ generic-accessors-0.6.0.1
-            , spatial-math-0.3.0.0
+            , spatial-math-0.4.0.0
             , TypeCompose-0.9.12
             ]
 

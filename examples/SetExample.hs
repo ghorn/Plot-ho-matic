@@ -93,8 +93,8 @@ main = do
 
   void $ CC.forkIO upstreamProcess
 
-  let refresh :: IO ()
-      refresh = do
+  let refresh :: Int -> IO ()
+      refresh _ = do
         putStrLn "downstream sending refresh request"
         CC.putMVar upMsg Nothing
 

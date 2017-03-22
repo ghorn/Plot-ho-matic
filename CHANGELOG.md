@@ -1,3 +1,7 @@
+0.11.{1,2}.0
+---
+* make settings aware of message counter
+
 0.11.0.0
 ---
 * newHistoryChannel' can now take meta without data

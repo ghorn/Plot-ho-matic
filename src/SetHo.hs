@@ -24,7 +24,7 @@ import System.Glib.Signals ( on )
 import SetHo.LookupTree ( newLookupTreeview )
 
 -- | fire up the the GUI
-runSetter :: String -> DTree -> IO (Maybe (Int, DTree)) -> IO () -> (Int -> DTree -> IO ()) -> IO ()
+runSetter :: String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> IO ()
 runSetter rootName initialValue userPollForNewMessage sendRequest userCommit = do
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
@@ -159,7 +159,7 @@ runSetter rootName initialValue userPollForNewMessage sendRequest userCommit = d
   _ <- on buttonRefresh Gtk.buttonActivated $ do
     counter <- readIORef counterRef
     putStrLn $ "sending settings request " ++ show counter
-    sendRequest
+    sendRequest counter
 
   _ <- on buttonTakeUpstream Gtk.buttonActivated takeLatestUpstream
 

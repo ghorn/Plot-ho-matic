@@ -19,7 +19,6 @@ import "gtk3" Graphics.UI.Gtk ( AttrOp( (:=) ) )
 import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import System.Glib.Signals ( on )
 import Text.Read ( readMaybe )
-import Text.Printf ( printf )
 
 data FieldElem =
   FieldElem
@@ -153,12 +152,14 @@ treeToUpstreamDData (Node (LveSum _) _) =
 
 
 newLookupTreeview ::
-  String
+  (Double -> String)
+  -> (Float -> String)
+  -> String
   -> DTree
   -> IO Bool
   -> (DTree -> IO ())
   -> IO (Gtk.TreeView, IO DTree, DTree -> IO (), IO (), DTree -> IO ())
-newLookupTreeview rootName initialValue getAutocommit commit = do
+newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commit = do
   treeStore <- Gtk.treeStoreNew [] :: IO (Gtk.TreeStore ListViewElement)
   treeview <- Gtk.treeViewNewWithModel treeStore :: IO Gtk.TreeView
 
@@ -222,8 +223,8 @@ newLookupTreeview rootName initialValue getAutocommit commit = do
 
   -- upstream
   let showField :: DField -> String
-      showField (DDouble x) = printf "%.2g" x
-      showField (DFloat x) = printf "%.2g" x
+      showField (DDouble x) = showDouble x
+      showField (DFloat x) = showFloat x
       showField (DInt x) = show x
       showField (DString x) = x
       showField DSorry = ""

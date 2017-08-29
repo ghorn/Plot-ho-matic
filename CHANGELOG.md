@@ -1,7 +1,8 @@
 master
 ---
 * optional configuration data
-* allow disabling autocommit
+* configurable: allow disabling autocommit
+* configurable: how to show Double/Float
 
 0.11.{1,2}.0
 ---

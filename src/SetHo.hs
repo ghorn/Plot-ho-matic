@@ -27,12 +27,16 @@ import SetHo.LookupTree ( newLookupTreeview )
 data SetHoConfig
   = SetHoConfig
     { enableAutoCommit :: Bool
+    , showDouble :: Double -> String
+    , showFloat :: Float -> String
     }
 
 defaultSetHoConfig :: SetHoConfig
 defaultSetHoConfig =
   SetHoConfig
   { enableAutoCommit = True
+  , showDouble = printf "%.2g"
+  , showFloat = printf "%.2g"
   }
 
 -- | fire up the the GUI
@@ -129,7 +133,7 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
         Nothing -> return False
         Just buttonAutoCommit -> Gtk.toggleButtonGetActive buttonAutoCommit
   (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadFromFile) <-
-    newLookupTreeview rootName initialValue getAutoCommitStatus commit
+    newLookupTreeview (showDouble config) (showFloat config) rootName initialValue getAutoCommitStatus commit
 
   treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
   Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically

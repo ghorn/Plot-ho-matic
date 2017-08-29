@@ -1,4 +1,4 @@
-master
+0.12.0.0
 ---
 * optional configuration data (SetHo)
 * configurable: allow disabling autocommit (SetHo)

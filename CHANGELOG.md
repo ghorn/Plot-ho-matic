@@ -1,8 +1,9 @@
 master
 ---
-* optional configuration data
-* configurable: allow disabling autocommit
-* configurable: how to show Double/Float
+* optional configuration data (SetHo)
+* configurable: allow disabling autocommit (SetHo)
+* configurable: how to show Double/Float (SetHo)
+* redraw plots upon resetting history (PlotHo)
 
 0.11.{1,2}.0
 ---

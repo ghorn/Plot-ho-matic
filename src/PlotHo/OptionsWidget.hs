@@ -96,10 +96,13 @@ makeOptionsWidget plotterOptions largestRangeMVar redraw = do
   resetXHistoryButton <- Gtk.buttonNewWithLabel "reset X range"
   resetYHistoryButton <- Gtk.buttonNewWithLabel "reset Y range"
 
-  void $ on resetXHistoryButton Gtk.buttonActivated $
+  on resetXHistoryButton Gtk.buttonActivated $
     CC.modifyMVar_ largestRangeMVar (\xy -> return (xy {xaxis = defaultHistoryRange}))
-  void $ on resetYHistoryButton Gtk.buttonActivated $
+    >> redraw
+
+  on resetYHistoryButton Gtk.buttonActivated $
     CC.modifyMVar_ largestRangeMVar (\xy -> return (xy {yaxis = defaultHistoryRange}))
+    >> redraw
 
   -- vbox to hold the little window on the left
   vbox <- Gtk.vBoxNew False 4

@@ -5,7 +5,8 @@
 -- | This is an experimental and unstable interface for
 -- generating a GUI for getting/setting options.
 module SetHo
-       ( runSetter
+       ( SetHoConfig(..), defaultSetHoConfig
+       , runSetter
        ) where
 
 import qualified GHC.Stats
@@ -23,9 +24,23 @@ import System.Glib.Signals ( on )
 
 import SetHo.LookupTree ( newLookupTreeview )
 
+data SetHoConfig
+  = SetHoConfig
+    { enableAutoCommit :: Bool
+    }
+
+defaultSetHoConfig :: SetHoConfig
+defaultSetHoConfig =
+  SetHoConfig
+  { enableAutoCommit = True
+  }
+
 -- | fire up the the GUI
-runSetter :: String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> IO ()
-runSetter rootName initialValue userPollForNewMessage sendRequest userCommit = do
+runSetter :: Maybe SetHoConfig -> String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> IO ()
+runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCommit = do
+  let config = case mconfig of
+        Just r -> r
+        Nothing -> defaultSetHoConfig
   statsEnabled <- GHC.Stats.getGCStatsEnabled
 
   counterRef <- newIORef 0
@@ -81,20 +96,25 @@ runSetter rootName initialValue userPollForNewMessage sendRequest userCommit = d
 
   --------------- main widget -----------------
   buttonCommit <- Gtk.buttonNewWithLabel "commit"
-  buttonAutoCommit <- Gtk.checkButtonNewWithLabel "auto-commit"
   buttonRefresh <- Gtk.buttonNewWithLabel "refresh"
   buttonTakeUpstream <- Gtk.buttonNewWithLabel "take upstream"
   Gtk.widgetSetTooltipText buttonCommit
     (Just "SET ME SET ME GO HEAD DO IT COME ON SET ME")
-  Gtk.widgetSetTooltipText buttonAutoCommit
-    (Just "Send settings upstream as soon as any value is changed")
+
+  mbuttonAutoCommit <-
+    if enableAutoCommit config
+    then do buttonAutoCommit <- Gtk.checkButtonNewWithLabel "auto-commit"
+            Gtk.widgetSetTooltipText buttonAutoCommit
+              (Just "Send settings upstream as soon as any value is changed")
+            return (Just buttonAutoCommit)
+    else return Nothing
 
   -- the options widget
   options <- Gtk.expanderNew "options"
-  Gtk.set options [ Gtk.containerChild := buttonAutoCommit
-                  , Gtk.expanderExpanded := True
-                  ]
-
+  let mautocommitChild = case mbuttonAutoCommit of
+        Nothing -> []
+        Just buttonAutoCommit -> [Gtk.containerChild := buttonAutoCommit]
+  Gtk.set options $ mautocommitChild ++ [Gtk.expanderExpanded := True]
 
   -- how to commit
   let commit val = do
@@ -105,8 +125,11 @@ runSetter rootName initialValue userPollForNewMessage sendRequest userCommit = d
         userCommit counter val
 
   -- the signal selector
+  let getAutoCommitStatus = case mbuttonAutoCommit of
+        Nothing -> return False
+        Just buttonAutoCommit -> Gtk.toggleButtonGetActive buttonAutoCommit
   (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadFromFile) <-
-    newLookupTreeview rootName initialValue (Gtk.toggleButtonGetActive buttonAutoCommit) commit
+    newLookupTreeview rootName initialValue getAutoCommitStatus commit
 
   treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
   Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically

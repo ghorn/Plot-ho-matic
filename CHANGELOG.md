@@ -1,3 +1,8 @@
+master
+---
+* optional configuration data
+* allow disabling autocommit
+
 0.11.{1,2}.0
 ---
 * make settings aware of message counter

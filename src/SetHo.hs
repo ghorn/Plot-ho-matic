@@ -35,8 +35,8 @@ defaultSetHoConfig :: SetHoConfig
 defaultSetHoConfig =
   SetHoConfig
   { enableAutoCommit = True
-  , showDouble = printf "%.2g"
-  , showFloat = printf "%.2g"
+  , showDouble = show
+  , showFloat = show
   }
 
 -- | fire up the the GUI

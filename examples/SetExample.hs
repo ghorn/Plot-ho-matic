@@ -113,4 +113,4 @@ main = do
           Just _ -> putStrLn "downstream poll got msg"
         return mx
 
-  runSetter "settings" (toDData initialFoo) pollForNewMessage refresh commit
+  runSetter Nothing "settings" (toDData initialFoo) pollForNewMessage refresh commit

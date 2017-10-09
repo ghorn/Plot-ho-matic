@@ -186,6 +186,7 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   _ <- on buttonRefresh Gtk.buttonActivated $ do
     counter <- readIORef counterRef
     putStrLn $ "sending settings request " ++ show counter
+    writeIORef upstreamCounterRef Nothing
     sendRequest counter
 
   _ <- on buttonTakeUpstream Gtk.buttonActivated takeLatestUpstream

@@ -1,3 +1,7 @@
+0.12.1.0
+---
+* "refresh" clears upstream version so you can see if you get a response
+
 0.12.0.0
 ---
 * optional configuration data (SetHo)

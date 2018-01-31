@@ -1,3 +1,7 @@
+0.12.2.0
+---
+* add a diff button to setHo
+
 0.12.1.0
 ---
 * "refresh" clears upstream version so you can see if you get a response

@@ -1,5 +1,5 @@
 name:                Plot-ho-matic
-version:             0.12.1.0
+version:             0.12.2.0
 synopsis:            Real-time line plotter for generic data
 license:             BSD3
 license-file:        LICENSE
@@ -44,7 +44,7 @@ library
                      , Chart-cairo >= 1.1
                      , containers
                      , data-default-class
-                     , generic-accessors >= 0.6.0.0
+                     , generic-accessors >= 0.6.2.0
                      , glib
                      , gtk3 >= 0.14.2
                      , lens

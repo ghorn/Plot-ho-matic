@@ -11,6 +11,7 @@ import Accessors.Dynamic
        ( DTree, DData(..), DConstructor(..), DSimpleEnum(..), DField(..)
        , describeDField, sameDFieldType
        , denumToString, denumToStringOrMsg, denumSetString
+       , diffDTrees
        )
 import Control.Monad ( void, when )
 import qualified Data.Text as T
@@ -158,7 +159,7 @@ newLookupTreeview ::
   -> DTree
   -> IO Bool
   -> (DTree -> IO ())
-  -> IO (Gtk.TreeView, IO DTree, DTree -> IO (), IO (), DTree -> IO ())
+  -> IO (Gtk.TreeView, IO DTree, DTree -> IO (), IO (), DTree -> IO (), IO ())
 newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commit = do
   treeStore <- Gtk.treeStoreNew [] :: IO (Gtk.TreeStore ListViewElement)
   treeview <- Gtk.treeViewNewWithModel treeStore :: IO Gtk.TreeView
@@ -497,7 +498,16 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
   tree <- ddataToTree (Just rootName) initialValue
   Gtk.treeStoreInsertTree treeStore [] 0 tree
 
-  return (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadDTree)
+  let printDiff = do
+        mupstream <- getLatestUpstream :: IO (Maybe (Either DField DData))
+        staged <- getLatestStaged :: IO (Either DField DData)
+        case mupstream of
+          Just upstream -> case diffDTrees rootName upstream staged of
+            [] -> putStrLn "======== all fields match! ======="
+            msgs -> putStrLn "====== some fields don't match! =====" >> mapM_ putStrLn msgs
+          Nothing -> putStrLn "===== no staged data ===="
+
+  return (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadDTree, printDiff)
 
 mergeSums :: SumElem -> SumElem -> (Bool, SumElem)
 mergeSums oldSum newSum

@@ -104,6 +104,7 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   buttonTakeUpstream <- Gtk.buttonNewWithLabel "take upstream"
   Gtk.widgetSetTooltipText buttonCommit
     (Just "SET ME SET ME GO HEAD DO IT COME ON SET ME")
+  buttonDiff <- Gtk.buttonNewWithLabel "diff"
 
   mbuttonAutoCommit <-
     if enableAutoCommit config
@@ -132,7 +133,7 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   let getAutoCommitStatus = case mbuttonAutoCommit of
         Nothing -> return False
         Just buttonAutoCommit -> Gtk.toggleButtonGetActive buttonAutoCommit
-  (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadFromFile) <-
+  (treeview, getLatestStaged, receiveNewUpstream, takeLatestUpstream, loadFromFile, printDiff) <-
     newLookupTreeview (showDouble config) (showFloat config) rootName initialValue getAutoCommitStatus commit
 
   treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
@@ -175,6 +176,8 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
     , Gtk.boxChildPacking buttonRefresh := Gtk.PackNatural
     , Gtk.containerChild := buttonTakeUpstream
     , Gtk.boxChildPacking buttonTakeUpstream := Gtk.PackNatural
+    , Gtk.containerChild := buttonDiff
+    , Gtk.boxChildPacking buttonDiff := Gtk.PackNatural
     , Gtk.containerChild := options
     , Gtk.boxChildPacking options := Gtk.PackNatural
     , Gtk.containerChild := treeviewExpander
@@ -190,6 +193,8 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
     sendRequest counter
 
   _ <- on buttonTakeUpstream Gtk.buttonActivated takeLatestUpstream
+
+  _ <- on buttonDiff Gtk.buttonActivated printDiff
 
   let pollForNewMessage = do
         mmsg <- userPollForNewMessage

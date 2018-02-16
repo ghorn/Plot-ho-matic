@@ -1,5 +1,5 @@
 name:                Plot-ho-matic
-version:             0.12.2.0
+version:             0.12.2.1
 synopsis:            Real-time line plotter for generic data
 license:             BSD3
 license-file:        LICENSE
@@ -42,6 +42,7 @@ library
                      , cereal
                      , Chart >= 1.1
                      , Chart-cairo >= 1.1
+                     , colour
                      , containers
                      , data-default-class
                      , generic-accessors >= 0.6.2.0

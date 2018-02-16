@@ -7,12 +7,17 @@ module PlotHo.ChartRender
 
 import Control.Lens ( (.~) )
 import Control.Monad ( void )
+import qualified Data.Colour as Colour
+import Data.Colour.Names as Colour
 import Data.Default.Class ( def )
 import qualified Graphics.Rendering.Chart as Chart
 import Graphics.Rendering.Chart.Backend.Cairo ( runBackend, defaultEnv )
 import qualified Graphics.Rendering.Cairo as Cairo
 
 import PlotHo.PlotTypes (Axes(..), AxisType(..), XY(..))
+
+colorSeq :: [Colour.AlphaColour Double]
+colorSeq = cycle $ map Colour.opaque [Colour.blue, Colour.red, Colour.green, Colour.cyan, Colour.magenta]
 
 -- take the data and use Chart to make a Renderable ()
 toChartRender :: forall a
@@ -39,7 +44,7 @@ toChartRender axes (XY historyXRange historyYRange) mtitle namePcs rectSize =
         $ Chart.plot_lines_title .~ name
         $ def
     allLines :: [Chart.PlotLines a a]
-    allLines = zipWith drawOne namePcs Chart.defaultColorSeq
+    allLines = zipWith drawOne namePcs colorSeq
 
     xscaleFun :: Chart.Layout a a -> Chart.Layout a a
     xscaleFun = case xtype of

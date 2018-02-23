@@ -200,18 +200,18 @@ toggleCheckMark treeStore colNum pathStr = do
 
   val <- Gtk.treeStoreGetValue treeStore treePath
   let mark = getMark colNum (lviMarked val)
-      changeMark = setMark colNum (lviMarked val)
+      changeMark lvi newMark = lvi { lviMarked = setMark colNum (lviMarked lvi) newMark }
   case (val, mark) of
     (ListViewInfo {lviTypeOrGetter = Left _ }, Off) ->
-      changeSelfAndChildren (\lvi -> lvi {lviMarked = changeMark On}) treePath
+      changeSelfAndChildren (\lvi -> changeMark lvi On) treePath
     (ListViewInfo {lviTypeOrGetter = Left _ } ,On) ->
-      changeSelfAndChildren (\lvi -> lvi {lviMarked = changeMark Off}) treePath
+      changeSelfAndChildren (\lvi -> changeMark lvi Off) treePath
     (ListViewInfo {lviTypeOrGetter = Left _ }, Inconsistent) ->
-      changeSelfAndChildren (\lvi -> lvi {lviMarked = changeMark On}) treePath
+      changeSelfAndChildren (\lvi -> changeMark lvi On) treePath
     (lvi@(ListViewInfo {lviTypeOrGetter = Right _}), On) ->
-      Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = changeMark Off}
+      Gtk.treeStoreSetValue treeStore treePath $ changeMark lvi Off
     (lvi@(ListViewInfo {lviTypeOrGetter = Right _}), Off) ->
-      Gtk.treeStoreSetValue treeStore treePath $ lvi {lviMarked = changeMark On}
+      Gtk.treeStoreSetValue treeStore treePath $ changeMark lvi On
     (ListViewInfo {lviTypeOrGetter = Right _}, Inconsistent) ->
       error "cell getter can't be inconsistent"
 

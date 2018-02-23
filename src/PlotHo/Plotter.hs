@@ -8,7 +8,7 @@ module PlotHo.Plotter
 
 import qualified GHC.Stats
 
-import Control.Monad ( unless, void )
+import Control.Monad ( unless, void, zipWithM )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
 import Data.Default.Class ( def )
@@ -22,8 +22,9 @@ import System.Exit ( exitFailure )
 import System.Glib.Signals ( on )
 import Prelude
 
-import PlotHo.GraphWidget ( newGraph )
-import PlotHo.PlotTypes ( Channel(..), Channel'(..), PlotterOptions(..) )
+import PlotHo.GraphWidget ( newGraph, toElement' )
+import PlotHo.PlotTypes ( Channel(..), Channel'(..), Element(..), Element'(..), PlotterOptions(..) )
+import PlotHo.SignalSelector ( SignalSelector(..), newMultiSignalSelectorArea )
 
 -- | fire up the the GUI
 runPlotter :: Maybe PlotterOptions -> [Channel] -> IO ()
@@ -81,6 +82,34 @@ runPlotter mplotterOptions channels = do
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
 
+  buttonSpawnPrefilledGraphs <- Gtk.buttonNewWithLabel "gen prefilled graphs"
+  void $ on buttonSpawnPrefilledGraphs Gtk.buttonActivated $ do
+    putStrLn "dummy button" --TODO(Rebecca)
+    -- graphWin <- newGraph plotterOptions channels
+    -- add this window to the list to be killed on exit
+    -- CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
+
+  -- Multi Signal Selector
+  elements <- zipWithM (\k (Channel c) -> Element <$> toElement' k c) [0..] channels
+  multiSignalSelector <- newMultiSignalSelectorArea elements 3
+
+  -- refresh signal selector
+  buttonRefresh <- Gtk.buttonNewWithLabel "refresh"
+  void $ on buttonRefresh Gtk.buttonActivated (rebuildSignal elements multiSignalSelector)
+
+  treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
+  Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically
+  Gtk.containerAdd treeviewScroll (ssTreeView multiSignalSelector)
+  Gtk.set treeviewScroll
+    [ Gtk.scrolledWindowHscrollbarPolicy := Gtk.PolicyNever
+    , Gtk.scrolledWindowVscrollbarPolicy := Gtk.PolicyAutomatic
+    ]
+  treeviewExpander <- Gtk.expanderNew "sig"
+  Gtk.set treeviewExpander
+    [ Gtk.containerChild := treeviewScroll
+    , Gtk.expanderExpanded := True
+    ]
+
   -- clear history / max history widget for each channel
   chanWidgets <- mapM (\(Channel c) -> newChannelWidget c) channels
 
@@ -105,6 +134,12 @@ runPlotter mplotterOptions channels = do
     , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
     , Gtk.containerChild := buttonSpawnGraph
     , Gtk.boxChildPacking buttonSpawnGraph := Gtk.PackNatural
+    , Gtk.containerChild := buttonSpawnPrefilledGraphs
+    , Gtk.boxChildPacking buttonSpawnPrefilledGraphs := Gtk.PackNatural
+    , Gtk.containerChild := buttonRefresh
+    , Gtk.boxChildPacking buttonRefresh := Gtk.PackNatural
+    , Gtk.containerChild := treeviewExpander
+    , Gtk.boxChildPacking treeviewExpander := Gtk.PackGrow
     , Gtk.containerChild := scroll
     ]
 
@@ -115,7 +150,33 @@ runPlotter mplotterOptions channels = do
   Gtk.widgetShowAll win
   Gtk.mainGUI
 
+rebuildSignal :: [Element] -> SignalSelector -> IO ()
+rebuildSignal elements signalSelector = do
+  let stageDataFromElement :: forall a . Element' a -> IO ()
+      stageDataFromElement element = do
+        let msgStore = eMsgStore element
+        -- get the latest data, just block if they're not available
+        mdatalog <- CC.takeMVar msgStore
+        case mdatalog of
+          -- no data yet, do nothing
+          Nothing -> CC.putMVar msgStore mdatalog
+          Just (datalog, msignalTree) -> do
+            case msignalTree of
+              -- No new signal tree, no action necessary
+              Nothing -> return ()
+              -- If there is a new signal tree, we have to merge it with the old one.
+              Just newSignalTree -> case signalSelector of
+                SignalSelector {ssRebuildSignalTree = rebuildSignalTree} ->
+                  rebuildSignalTree element newSignalTree
 
+            -- write the data to the IORef so that the getters get the right stuff
+            IORef.writeIORef (ePlotValueRef element) datalog
+
+            -- Put the data back. Put Nothing to signify that the signal tree is up to date.
+            CC.putMVar msgStore (Just (datalog, Nothing))
+
+    -- stage the values
+  mapM_ (\(Element e) ->  stageDataFromElement e) elements
 
 
 -- the list of channels

@@ -4,6 +4,7 @@
 
 module PlotHo.GraphWidget
        ( newGraph
+       , toElement'
        ) where
 
 import Control.Concurrent ( MVar )

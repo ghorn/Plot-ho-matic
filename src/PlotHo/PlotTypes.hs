@@ -49,7 +49,7 @@ data ListViewInfo where
   ListViewInfo ::
     { lviName :: ![String]
     , lviTypeOrGetter :: !(Either String (a -> [[(Double,Double)]]))
-    , lviMarked :: !MarkedState
+    , lviMarked :: ![MarkedState]
     , lviPlotValueRef :: IORef a
     } -> ListViewInfo
 

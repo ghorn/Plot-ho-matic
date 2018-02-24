@@ -26,7 +26,7 @@ import Graphics.Rendering.Chart ( RectSize )
 import PlotHo.ChartRender ( toChartRender )
 import PlotHo.OptionsWidget ( OptionsWidget(..), makeOptionsWidget )
 import PlotHo.PlotTypes
-import PlotHo.SignalSelector ( SignalSelector(..), newSignalSelectorArea )
+import PlotHo.SignalSelector ( SignalSelector(..), Selector(..), newSignalSelectorArea )
 
 
 toElement' :: Int -> Channel' a -> IO (Element' a)
@@ -144,7 +144,7 @@ newGraph options channels = do
                       Nothing -> return ()
                       -- If there is a new signal tree, we have to merge it with the old one.
                       Just newSignalTree -> case signalSelector of
-                        SignalSelector {ssRebuildSignalTree = rebuildSignalTree} ->
+                        SignalSelector {ssSelectors = Selector {sRebuildSignalTree = rebuildSignalTree}} ->
                           rebuildSignalTree element newSignalTree
 
                     -- write the data to the IORef so that the getters get the right stuff
@@ -159,7 +159,7 @@ newGraph options channels = do
           -- get the latest plot points
           -- Now we have rebuild the signal tree if necessary, and staged the latest plot values
           -- To the geter IORefs. It is safe to get the plot points.
-          (mtitle, namedPlotPoints) <- ssToPlotValues signalSelector
+          (mtitle, namedPlotPoints) <- sToPlotValues (ssSelectors signalSelector)
 
           debug "handleDraw: got title and plot points"
           let -- update the min/max plot ranges

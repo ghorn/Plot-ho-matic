@@ -24,7 +24,7 @@ import Prelude
 
 import PlotHo.GraphWidget ( newGraph, toElement' )
 import PlotHo.PlotTypes ( Channel(..), Channel'(..), Element(..), Element'(..), PlotterOptions(..) )
-import PlotHo.SignalSelector ( SignalSelector(..), newMultiSignalSelectorArea )
+import PlotHo.SignalSelector ( SignalSelector(..), Selector(..), newMultiSignalSelectorArea )
 
 -- | fire up the the GUI
 runPlotter :: Maybe PlotterOptions -> [Channel] -> IO ()
@@ -95,7 +95,7 @@ runPlotter mplotterOptions channels = do
 
   -- refresh signal selector
   buttonRefresh <- Gtk.buttonNewWithLabel "refresh"
-  void $ on buttonRefresh Gtk.buttonActivated (rebuildSignal elements multiSignalSelector)
+  void $ on buttonRefresh Gtk.buttonActivated (rebuildSignals elements multiSignalSelector)
 
   treeviewScroll <- Gtk.scrolledWindowNew Nothing Nothing
   Gtk.set treeviewScroll [Gtk.widgetVExpand := True] -- make sure it expands vertically
@@ -150,8 +150,8 @@ runPlotter mplotterOptions channels = do
   Gtk.widgetShowAll win
   Gtk.mainGUI
 
-rebuildSignal :: [Element] -> SignalSelector -> IO ()
-rebuildSignal elements signalSelector = do
+rebuildSignals :: [Element] -> SignalSelector [Selector] -> IO ()
+rebuildSignals elements signalSelector = do
   let stageDataFromElement :: forall a . Element' a -> IO ()
       stageDataFromElement element = do
         let msgStore = eMsgStore element
@@ -165,9 +165,9 @@ rebuildSignal elements signalSelector = do
               -- No new signal tree, no action necessary
               Nothing -> return ()
               -- If there is a new signal tree, we have to merge it with the old one.
-              Just newSignalTree -> case signalSelector of
-                SignalSelector {ssRebuildSignalTree = rebuildSignalTree} ->
-                  rebuildSignalTree element newSignalTree
+              Just newSignalTree -> do
+                let rebuilds = sRebuildSignalTree <$> (ssSelectors signalSelector)
+                mapM_ (\x -> x element newSignalTree) rebuilds
 
             -- write the data to the IORef so that the getters get the right stuff
             IORef.writeIORef (ePlotValueRef element) datalog

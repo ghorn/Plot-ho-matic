@@ -5,6 +5,7 @@
 
 module PlotHo.SignalSelector
        ( SignalSelector(..)
+       , Selector(..)
        , newSignalSelectorArea
        , newMultiSignalSelectorArea
        , gettersAndTitle
@@ -25,16 +26,20 @@ import System.Glib.UTFString ( DefaultGlibString )
 
 import PlotHo.PlotTypes
 
-data SignalSelector
+data SignalSelector a
   = SignalSelector
     { ssTreeView :: Gtk.TreeView
-    , ssRebuildSignalTree :: forall a . Element' a -> SignalTree a -> IO ()
-    , ssToPlotValues :: IO (Maybe String, [(String, [[(Double, Double)]])])
+    , ssSelectors :: a
     }
 
-newMultiSignalSelectorArea :: [Element] -> Int -> IO SignalSelector
+data Selector
+ = Selector
+  { sRebuildSignalTree :: forall a . Element' a -> SignalTree a -> IO ()
+  , sToPlotValues :: IO (Maybe String, [(String, [[(Double, Double)]])])
+  }
+
+newMultiSignalSelectorArea :: [Element] -> Int -> IO (SignalSelector [Selector])
 newMultiSignalSelectorArea elems numCols = do
-  graphInfoMVar <- CC.newMVar (Nothing, [])
 
   -- Be sure to get the # columns right or there will be a runtime error
   treeStore <- Gtk.treeStoreNew $ initialForest elems (numCols + 1)
@@ -45,23 +50,30 @@ newMultiSignalSelectorArea elems numCols = do
   (setSignalAttrAndRender, _) <- signalColumn treeStore treeview "signal"
   -- add some columns
 
-  attrAndCol <- mapM (\n -> checkMarkColumn treeStore treeview ("Dummy!" ++ show n)) [1,2..numCols]
+  attrAndCol <- mapM (\n -> checkMarkColumn treeStore treeview ("Plot " ++ show n)) [1,2..numCols]
   let (setAttrAndRenders, columns) = unzip $ attrAndCol
   -- set the attributes
   sequence_ setAttrAndRenders
   setSignalAttrAndRender
 
-  --TODO(Rebecca) new update function
-  let updateGettersAndTitle' = updateGettersAndTitle graphInfoMVar treeStore treeview (head columns)
+  let toSelector :: Gtk.TreeViewColumn -> IO Selector
+      toSelector column = do
+        graphInfoMVar <- CC.newMVar (Nothing, [])
+        let updateGettersAndTitle' = updateGettersAndTitle graphInfoMVar treeStore treeview column
+        return $
+          Selector
+          { sRebuildSignalTree = rebuildSignalTree treeStore updateGettersAndTitle' treeview
+          , sToPlotValues = toValues graphInfoMVar
+          }
+  selectors <- mapM toSelector columns
 
-  return
+  return $
     SignalSelector
     { ssTreeView = treeview
-    , ssRebuildSignalTree = rebuildSignalTree treeStore updateGettersAndTitle' treeview
-    , ssToPlotValues = toValues graphInfoMVar
+    , ssSelectors = selectors
     }
 
-newSignalSelectorArea :: [Element] -> IO () -> IO SignalSelector
+newSignalSelectorArea :: [Element] -> IO () -> IO (SignalSelector Selector)
 newSignalSelectorArea elems redraw = do
   -- mvar with all the user input
   graphInfoMVar <- CC.newMVar (Nothing, [])
@@ -95,8 +107,11 @@ newSignalSelectorArea elems redraw = do
   return
     SignalSelector
     { ssTreeView = treeview
-    , ssRebuildSignalTree = rebuildSignalTree treeStore updateGettersAndTitle' treeview
-    , ssToPlotValues = toValues graphInfoMVar
+    , ssSelectors =
+      Selector
+      { sRebuildSignalTree = rebuildSignalTree treeStore updateGettersAndTitle' treeview
+      , sToPlotValues = toValues graphInfoMVar
+      }
     }
 
 signalColumn :: forall a . Gtk.TreeViewClass a => Gtk.TreeStore ListViewInfo -> a -> String

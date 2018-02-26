@@ -83,11 +83,39 @@ runPlotter mplotterOptions channels = do
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
 
   -- multi signal selector
+  -- set the number of graphs
+  numGraphsLabel <- Gtk.vBoxNew False 4 >>= labeledWidget "num graphs:"
+  numGraphsEntry <- Gtk.entryNew
+  Gtk.set numGraphsEntry
+    [ Gtk.entryEditable := True
+    , Gtk.widgetSensitive := True
+    ]
+  Gtk.entrySetText numGraphsEntry "3"
+  let makeMultiGraphs = do
+        txt <- Gtk.get numGraphsEntry Gtk.entryText
+        case readMaybe txt :: Maybe Int of
+          Nothing ->
+            putStrLn ("num graphs: couldn't make an Int out of \"" ++ show txt ++ "\"")
+          Just 0  -> putStrLn "numGraphs: must be greater than 0"
+          Just k  -> do
+            mVarMoreGraphsToKill <- multiSelectWidget mplotterOptions channels k
+            moreGraphsToKill <- CC.readMVar mVarMoreGraphsToKill
+            CC.modifyMVar_ graphWindowsToBeKilled (return . (moreGraphsToKill++))
+
+  -- make the button
   buttonMultiSelector <- Gtk.buttonNewWithLabel "multigraph"
   void $ on buttonMultiSelector Gtk.buttonActivated $ do
-    mVarMoreGraphsToKill <- multiSelectWidget mplotterOptions channels
-    moreGraphsToKill <- CC.readMVar mVarMoreGraphsToKill
-    CC.modifyMVar_ graphWindowsToBeKilled (return . (moreGraphsToKill++))
+    makeMultiGraphs
+
+  hboxMultiSelector <- Gtk.hBoxNew False 4
+  Gtk.set hboxMultiSelector
+    [ Gtk.containerChild := numGraphsLabel
+    , Gtk.boxChildPacking numGraphsLabel := Gtk.PackNatural
+    , Gtk.containerChild := numGraphsEntry
+    , Gtk.boxChildPacking numGraphsEntry := Gtk.PackNatural
+    , Gtk.containerChild := buttonMultiSelector
+    , Gtk.boxChildPacking buttonMultiSelector := Gtk.PackGrow
+    ]
 
   -- clear history / max history widget for each channel
   chanWidgets <- mapM (\(Channel c) -> newChannelWidget c) channels
@@ -113,8 +141,8 @@ runPlotter mplotterOptions channels = do
     , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
     , Gtk.containerChild := buttonSpawnGraph
     , Gtk.boxChildPacking buttonSpawnGraph := Gtk.PackNatural
-    , Gtk.containerChild := buttonMultiSelector
-    , Gtk.boxChildPacking buttonMultiSelector := Gtk.PackNatural
+    , Gtk.containerChild := hboxMultiSelector
+    , Gtk.boxChildPacking hboxMultiSelector := Gtk.PackNatural
     , Gtk.containerChild := scroll
     ]
 

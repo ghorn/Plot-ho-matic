@@ -24,8 +24,8 @@ import PlotHo.SignalSelector ( SignalSelector(..), Selector(..), newMultiSignalS
 
 
 -- | fire up the the GUI
-multiSelectWidget :: Maybe PlotterOptions -> [Channel] -> IO (CC.MVar [Gtk.Window])
-multiSelectWidget mplotterOptions channels = do
+multiSelectWidget :: Maybe PlotterOptions -> [Channel] -> Int -> IO (CC.MVar [Gtk.Window])
+multiSelectWidget mplotterOptions channels numGraphs = do
   let plotterOptions = fromMaybe def mplotterOptions
 
   unless CC.rtsSupportsBoundThreads $ do
@@ -59,7 +59,7 @@ multiSelectWidget mplotterOptions channels = do
 
   -- Multi Signal Selector
   elements <- zipWithM (\k (Channel c) -> Element <$> toElement' k c) [0..] channels
-  multiSignalSelector <- newMultiSignalSelectorArea elements 3
+  multiSignalSelector <- newMultiSignalSelectorArea elements numGraphs
 
   -- refresh signal selector
   buttonRefresh <- Gtk.buttonNewWithLabel "refresh"

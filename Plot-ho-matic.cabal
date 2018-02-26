@@ -30,6 +30,7 @@ library
                      PlotHo.ChartRender
                      PlotHo.HistoryChannel
                      PlotHo.GraphWidget
+                     PlotHo.MultiSelectWidget
                      PlotHo.OptionsWidget
                      PlotHo.Plotter
                      PlotHo.PlotTypes

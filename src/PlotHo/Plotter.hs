@@ -8,7 +8,7 @@ module PlotHo.Plotter
 
 import qualified GHC.Stats
 
-import Control.Monad ( unless, void )
+import Control.Monad ( unless, void,  )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
 import Data.Default.Class ( def )
@@ -24,6 +24,7 @@ import Prelude
 
 import PlotHo.GraphWidget ( newGraph )
 import PlotHo.PlotTypes ( Channel(..), Channel'(..), PlotterOptions(..) )
+import PlotHo.MultiSelectWidget ( multiSelectWidget )
 
 -- | fire up the the GUI
 runPlotter :: Maybe PlotterOptions -> [Channel] -> IO ()
@@ -77,9 +78,44 @@ runPlotter mplotterOptions channels = do
   -- button to spawn a new graph
   buttonSpawnGraph <- Gtk.buttonNewWithLabel "new graph"
   void $ on buttonSpawnGraph Gtk.buttonActivated $ do
-    graphWin <- newGraph plotterOptions channels
+    graphWin <- newGraph plotterOptions channels Nothing
     -- add this window to the list to be killed on exit
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
+
+  -- multi signal selector
+  -- set the number of graphs
+  numGraphsLabel <- Gtk.vBoxNew False 4 >>= labeledWidget "num graphs:"
+  numGraphsEntry <- Gtk.entryNew
+  Gtk.set numGraphsEntry
+    [ Gtk.entryEditable := True
+    , Gtk.widgetSensitive := True
+    ]
+  Gtk.entrySetText numGraphsEntry "3"
+  let makeMultiGraphs = do
+        txt <- Gtk.get numGraphsEntry Gtk.entryText
+        case readMaybe txt :: Maybe Int of
+          Nothing ->
+            putStrLn ("num graphs: couldn't make an Int out of \"" ++ show txt ++ "\"")
+          Just 0  -> putStrLn "numGraphs: must be greater than 0"
+          Just k  -> do
+            mVarMoreGraphsToKill <- multiSelectWidget mplotterOptions channels k
+            moreGraphsToKill <- CC.readMVar mVarMoreGraphsToKill
+            CC.modifyMVar_ graphWindowsToBeKilled (return . (moreGraphsToKill++))
+
+  -- make the button
+  buttonMultiSelector <- Gtk.buttonNewWithLabel "multigraph"
+  void $ on buttonMultiSelector Gtk.buttonActivated $ do
+    makeMultiGraphs
+
+  hboxMultiSelector <- Gtk.hBoxNew False 4
+  Gtk.set hboxMultiSelector
+    [ Gtk.containerChild := numGraphsLabel
+    , Gtk.boxChildPacking numGraphsLabel := Gtk.PackNatural
+    , Gtk.containerChild := numGraphsEntry
+    , Gtk.boxChildPacking numGraphsEntry := Gtk.PackNatural
+    , Gtk.containerChild := buttonMultiSelector
+    , Gtk.boxChildPacking buttonMultiSelector := Gtk.PackGrow
+    ]
 
   -- clear history / max history widget for each channel
   chanWidgets <- mapM (\(Channel c) -> newChannelWidget c) channels
@@ -105,6 +141,8 @@ runPlotter mplotterOptions channels = do
     , Gtk.boxChildPacking statsLabel := Gtk.PackNatural
     , Gtk.containerChild := buttonSpawnGraph
     , Gtk.boxChildPacking buttonSpawnGraph := Gtk.PackNatural
+    , Gtk.containerChild := hboxMultiSelector
+    , Gtk.boxChildPacking hboxMultiSelector := Gtk.PackNatural
     , Gtk.containerChild := scroll
     ]
 
@@ -114,9 +152,6 @@ runPlotter mplotterOptions channels = do
   void $ Gtk.set win [ Gtk.containerChild := vbox ]
   Gtk.widgetShowAll win
   Gtk.mainGUI
-
-
-
 
 -- the list of channels
 newChannelWidget :: Channel' a -> IO Gtk.VBox

@@ -54,8 +54,8 @@ toElement' index channel = do
 
 
 -- make a new graph window
-newGraph :: PlotterOptions -> [Channel] -> IO Gtk.Window
-newGraph options channels = do
+newGraph :: PlotterOptions -> [Channel] -> Maybe (SignalSelector Selector) -> IO Gtk.Window
+newGraph options channels mSignalSelector = do
   win <- Gtk.windowNew
 
   elements <- zipWithM (\k (Channel c) -> Element <$> toElement' k c) [0..] channels
@@ -87,7 +87,7 @@ newGraph options channels = do
         void $ CC.swapMVar needRedrawMVar True
         Gtk.postGUIAsync (Gtk.widgetQueueDraw chartCanvas)
 
-  signalSelector <- newSignalSelectorArea elements redraw
+  signalSelector <- newSignalSelectorArea elements redraw mSignalSelector
 
   largestRangeMVar <- CC.newMVar (XY defaultHistoryRange defaultHistoryRange)
   optionsWidget <- makeOptionsWidget options largestRangeMVar redraw

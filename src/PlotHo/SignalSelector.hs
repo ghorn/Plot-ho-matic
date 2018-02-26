@@ -29,6 +29,7 @@ import PlotHo.PlotTypes
 data SignalSelector a
   = SignalSelector
     { ssTreeView :: Gtk.TreeView
+    , ssTreeStore :: Gtk.TreeStore ListViewInfo
     , ssSelectors :: a
     }
 
@@ -36,6 +37,7 @@ data Selector
  = Selector
   { sRebuildSignalTree :: forall a . Element' a -> SignalTree a -> IO ()
   , sToPlotValues :: IO (Maybe String, [(String, [[(Double, Double)]])])
+  , sColumnNumber :: Int -- ^ must be assigned after tree is built - a bit hacky :(
   }
 
 newMultiSignalSelectorArea :: [Element] -> Int -> IO (SignalSelector [Selector])
@@ -59,26 +61,32 @@ newMultiSignalSelectorArea elems numCols = do
   let toSelector :: Gtk.TreeViewColumn -> IO Selector
       toSelector column = do
         graphInfoMVar <- CC.newMVar (Nothing, [])
-        let updateGettersAndTitle' = updateGettersAndTitle graphInfoMVar treeStore treeview column
+        colNum <- getColumnNumber treeview column
+        let updateGettersAndTitle' = updateGettersAndTitle graphInfoMVar treeStore colNum
         return $
           Selector
           { sRebuildSignalTree = rebuildSignalTree treeStore updateGettersAndTitle' treeview
           , sToPlotValues = toValues graphInfoMVar
+          , sColumnNumber = colNum
           }
   selectors <- mapM toSelector columns
 
   return $
     SignalSelector
     { ssTreeView = treeview
+    , ssTreeStore = treeStore
     , ssSelectors = selectors
     }
 
-newSignalSelectorArea :: [Element] -> IO () -> IO (SignalSelector Selector)
-newSignalSelectorArea elems redraw = do
+newSignalSelectorArea :: [Element] -> IO ()
+                      -> Maybe (SignalSelector Selector)
+                      -> IO (SignalSelector Selector)
+newSignalSelectorArea elems redraw mSigSelector = do
   -- mvar with all the user input
   graphInfoMVar <- CC.newMVar (Nothing, [])
-
-  treeStore <- Gtk.treeStoreNew $ initialForest elems 2
+  treeStore <- case (ssTreeStore <$> mSigSelector) of
+    Just t -> return t
+    Nothing -> Gtk.treeStoreNew $ initialForest elems 2
   treeview <- Gtk.treeViewNewWithModel treeStore
 
   Gtk.treeViewSetHeadersVisible treeview True
@@ -93,11 +101,13 @@ newSignalSelectorArea elems redraw = do
   Gtk.treeViewColumnSetTitle colVisible "visible?"
   rendererVisible <- Gtk.cellRendererToggleNew
   Gtk.treeViewColumnPackStart colVisible rendererVisible True
-  let updateGettersAndTitle' = updateGettersAndTitle graphInfoMVar treeStore treeview colVisible
   appendColumn treeview colVisible
 
   -- Now, we can set the attributes and render since the order of the columns is set.
-  colVisibleNumber <- getColumnNumber treeview colVisible
+  colVisibleNumber <- case ((sColumnNumber . ssSelectors) <$> mSigSelector) of
+   Nothing -> getColumnNumber treeview colVisible
+   Just i -> return i
+  let updateGettersAndTitle' = updateGettersAndTitle graphInfoMVar treeStore colVisibleNumber
   Gtk.cellLayoutSetAttributes colVisible rendererVisible treeStore $ \lvi -> (markedAttribute colVisibleNumber lvi)
 
   setSignalAttrAndRender
@@ -107,10 +117,12 @@ newSignalSelectorArea elems redraw = do
   return
     SignalSelector
     { ssTreeView = treeview
+    , ssTreeStore = treeStore
     , ssSelectors =
       Selector
       { sRebuildSignalTree = rebuildSignalTree treeStore updateGettersAndTitle' treeview
       , sToPlotValues = toValues graphInfoMVar
+      , sColumnNumber = colVisibleNumber
       }
     }
 
@@ -151,7 +163,7 @@ checkMarkColumn treeStore treeview columnName = do
 appendColumn :: forall a . Gtk.TreeViewClass a => a -> Gtk.TreeViewColumn -> IO ()
 appendColumn treeview col = do
   void $ Gtk.treeViewAppendColumn treeview col
-  --TODO(rebecca): append proper number of columns to lvi
+  --TODO(rebecca): append proper number of columns to lvi? maybe
 
 
 initialForest :: [Element] -> Int -> [Tree ListViewInfo]
@@ -298,17 +310,15 @@ getChildrenFuns treeStore = (getChildrenPaths, changeSelfAndChildren)
       mapM_ (changeSelfAndChildren change) childrenPaths
 
 -- traverse the whole graph and update the list of getters and the title
-updateGettersAndTitle :: forall a . Gtk.TreeViewClass a
-                      => CC.MVar (Maybe String, [(String, IO [[(Double, Double)]])])
-                      -> Gtk.TreeStore ListViewInfo -> a -> Gtk.TreeViewColumn -> IO ()
-updateGettersAndTitle graphInfoMVar treeStore treeview colVisible = do
+updateGettersAndTitle :: CC.MVar (Maybe String, [(String, IO [[(Double, Double)]])])
+                      -> Gtk.TreeStore ListViewInfo -> Int -> IO ()
+updateGettersAndTitle graphInfoMVar treeStore colNum = do
   -- first get all trees
   let getTrees k = do
         tree' <- Gtk.treeStoreLookup treeStore [k]
         case tree' of Nothing -> return []
                       Just tree -> fmap (tree:) (getTrees (k+1))
   theTrees <- getTrees 0
-  colNum <- getColumnNumber treeview colVisible
   let newGetters0 :: [([String], IO [[(Double, Double)]])]
       newGetters0 = zip names (gots <$> goodLvis)
         where

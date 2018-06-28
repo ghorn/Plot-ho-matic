@@ -234,7 +234,6 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
       showField (DWord16 x) = show x
       showField (DWord32 x) = show x
       showField (DWord64 x) = show x
-      showField (DBool x) = show x
       showField (DString x) = x
       showField DSorry = ""
 
@@ -492,9 +491,6 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
       modifyField f0@(DWord64 _) txt = case readMaybe txt of
         Nothing -> f0
         Just x -> DWord64 x
-      modifyField f0@(DBool _) txt = case readMaybe txt of
-        Nothing -> f0
-        Just x -> DBool x
       modifyField (DString _) txt = DString txt
       modifyField DSorry _ = DSorry
 

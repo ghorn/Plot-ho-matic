@@ -15,6 +15,7 @@ data Foo a = MkFoo { x :: Double
                    , w :: a
                    } deriving Generic
 data Bar = MkBar { lol :: Double
+                 , a_bool :: Bool
 --                   , xyzList :: S.Seq Xyz
                  , foos :: Foo (Foo (Foo Double))
                  , foo :: Foo Double
@@ -26,6 +27,7 @@ bar0 :: Bar
 bar0 =
   MkBar
   7
+  False
 --  (S.fromList [MkFoo 1 2 3])
   (MkFoo 1 2 3 (MkFoo 4 5 6 (MkFoo 7 8 9 10)))
   (MkFoo 1 2 3 4)
@@ -34,9 +36,10 @@ foo0 :: Foo Double
 foo0 = MkFoo 1 2 3 0.1
 
 incrementBar :: Bar -> Bar
-incrementBar (MkBar a _ _) =
+incrementBar (MkBar a b _ _) =
   MkBar
   (a+0.2)
+  (not b)
   (foo' (foo' (foo' (sin (3*a)))))
   (foo' (sin (2*a)))
   where

@@ -226,7 +226,15 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
   let showField :: DField -> String
       showField (DDouble x) = showDouble x
       showField (DFloat x) = showFloat x
-      showField (DInt x) = show x
+      showField (DInt8 x) = show x
+      showField (DInt16 x) = show x
+      showField (DInt32 x) = show x
+      showField (DInt64 x) = show x
+      showField (DWord8 x) = show x
+      showField (DWord16 x) = show x
+      showField (DWord32 x) = show x
+      showField (DWord64 x) = show x
+      showField (DBool x) = show x
       showField (DString x) = x
       showField DSorry = ""
 
@@ -460,9 +468,33 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
       modifyField f0@(DFloat _) txt = case readMaybe txt of
         Nothing -> f0
         Just x -> DFloat x
-      modifyField f0@(DInt _) txt = case readMaybe txt of
+      modifyField f0@(DInt8 _) txt = case readMaybe txt of
         Nothing -> f0
-        Just x -> DInt x
+        Just x -> DInt8 x
+      modifyField f0@(DInt16 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DInt16 x
+      modifyField f0@(DInt32 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DInt32 x
+      modifyField f0@(DInt64 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DInt64 x
+      modifyField f0@(DWord8 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DWord8 x
+      modifyField f0@(DWord16 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DWord16 x
+      modifyField f0@(DWord32 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DWord32 x
+      modifyField f0@(DWord64 _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DWord64 x
+      modifyField f0@(DBool _) txt = case readMaybe txt of
+        Nothing -> f0
+        Just x -> DBool x
       modifyField (DString _) txt = DString txt
       modifyField DSorry _ = DSorry
 

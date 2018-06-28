@@ -57,7 +57,15 @@ historySignalTree axisType topName = makeSignalTree' [topName] accessors
     toDoubleGetter :: GAField a -> (a -> Double)
     toDoubleGetter (FieldDouble f) = (^. f)
     toDoubleGetter (FieldFloat f) = realToFrac . (^. f)
-    toDoubleGetter (FieldInt f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldInt8 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldInt16 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldInt32 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldInt64 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldWord8 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldWord16 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldWord32 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldWord64 f) = fromIntegral . (^. f)
+    toDoubleGetter (FieldBool _) = const 0
     toDoubleGetter (FieldString _) = const 0
     toDoubleGetter FieldSorry = const 0
 

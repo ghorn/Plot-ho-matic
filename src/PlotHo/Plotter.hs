@@ -6,8 +6,6 @@ module PlotHo.Plotter
        ( runPlotter
        ) where
 
-import qualified GHC.Stats
-
 import Control.Monad ( unless, void )
 import Control.Monad.IO.Class ( MonadIO(..) )
 import qualified Control.Concurrent as CC
@@ -22,6 +20,7 @@ import System.Exit ( exitFailure )
 import System.Glib.Signals ( on )
 import Prelude
 
+import PlotHoCommon ( getLiveBytes, getRTSStatsEnabled )
 import PlotHo.GraphWidget ( newGraph )
 import PlotHo.PlotTypes ( Channel(..), Channel'(..), PlotterOptions(..) )
 
@@ -29,7 +28,7 @@ import PlotHo.PlotTypes ( Channel(..), Channel'(..), PlotterOptions(..) )
 runPlotter :: Maybe PlotterOptions -> [Channel] -> IO ()
 runPlotter mplotterOptions channels = do
   let plotterOptions = fromMaybe def mplotterOptions
-  statsEnabled <- GHC.Stats.getGCStatsEnabled
+  rtsStatsEnabled <- getRTSStatsEnabled
 
   unless CC.rtsSupportsBoundThreads $ do
     putStr $ unlines
@@ -52,11 +51,10 @@ runPlotter mplotterOptions channels = do
   statsLabel <- Gtk.labelNew (Nothing :: Maybe String)
   let statsWorker = do
         CC.threadDelay 500000
-        msg <- if statsEnabled
+        msg <- if rtsStatsEnabled
                then do
-                 stats <- GHC.Stats.getGCStats
-                 return $ printf "The current memory usage is %.2f MB"
-                   ((realToFrac (GHC.Stats.currentBytesUsed stats) :: Double) /(1024*1024))
+                 liveBytes <- getLiveBytes
+                 return $ printf "The current memory usage is %.2f MB" (liveBytes /(1024*1024))
                else return "(enable GHC statistics with +RTS -T)"
         Gtk.postGUISync $ Gtk.labelSetText statsLabel ("Welcome to Plot-ho-matic!\n" ++ msg)
         statsWorker

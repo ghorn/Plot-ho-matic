@@ -1,3 +1,7 @@
+HEAD
+---
+* RTS stats compatability
+
 0.12.2.0
 ---
 * add a diff button to setHo

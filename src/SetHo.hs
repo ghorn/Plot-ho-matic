@@ -9,8 +9,6 @@ module SetHo
        , runSetter
        ) where
 
-import qualified GHC.Stats
-
 import Accessors.Dynamic ( DTree )
 import qualified Control.Concurrent as CC
 import Control.Monad.IO.Class ( liftIO )
@@ -22,6 +20,7 @@ import qualified "gtk3" Graphics.UI.Gtk as Gtk
 import Text.Printf ( printf )
 import System.Glib.Signals ( on )
 
+import PlotHoCommon ( getLiveBytes, getRTSStatsEnabled )
 import SetHo.LookupTree ( newLookupTreeview )
 
 data SetHoConfig
@@ -45,7 +44,7 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   let config = case mconfig of
         Just r -> r
         Nothing -> defaultSetHoConfig
-  statsEnabled <- GHC.Stats.getGCStatsEnabled
+  rtsStatsEnabled <- getRTSStatsEnabled
 
   counterRef <- newIORef 0
   upstreamCounterRef <- newIORef Nothing
@@ -61,11 +60,10 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
 
   statsLabel <- Gtk.labelNew (Nothing :: Maybe String)
   let makeStatsMessage = do
-        statsMsg <- if statsEnabled
+        statsMsg <- if rtsStatsEnabled
                then do
-                 stats <- GHC.Stats.getGCStats
-                 return $ printf "The current memory usage is %.2f MB"
-                   ((realToFrac (GHC.Stats.currentBytesUsed stats) :: Double) /(1024*1024))
+                 liveBytes <- getLiveBytes
+                 return $ printf "The current memory usage is %.2f MB" (liveBytes /(1024*1024))
                else return "(enable GHC statistics with +RTS -T)"
         counter <- readIORef counterRef
         mupstreamCounter <- readIORef upstreamCounterRef

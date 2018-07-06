@@ -26,7 +26,8 @@ library
   default-language:  Haskell2010
   exposed-modules:   PlotHo, SetHo
 
-  other-modules:     PlotHo.Channel
+  other-modules:     PlotHoCommon
+                     PlotHo.Channel
                      PlotHo.ChartRender
                      PlotHo.HistoryChannel
                      PlotHo.GraphWidget

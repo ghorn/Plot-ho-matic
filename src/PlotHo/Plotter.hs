@@ -80,7 +80,7 @@ runPlotter mplotterOptions channels = do
     CC.modifyMVar_ graphWindowsToBeKilled (return . (graphWin:))
 
   -- clear history / max history widget for each channel
-  chanWidgets <- mapM (\(Channel c) -> newChannelWidget c) channels
+  chanWidgets <- mapM (\(Channel c) -> newChannelWidget (defaultMaxHistory plotterOptions) c) channels
 
   -- box to hold list of channels
   channelBox <- Gtk.vBoxNew False 4
@@ -117,8 +117,8 @@ runPlotter mplotterOptions channels = do
 
 
 -- the list of channels
-newChannelWidget :: Channel' a -> IO Gtk.VBox
-newChannelWidget channel = do
+newChannelWidget :: Int -> Channel' a -> IO Gtk.VBox
+newChannelWidget defaultMaxHistory' channel = do
   vbox <- Gtk.vBoxNew False 4
 
   nameBox' <- Gtk.hBoxNew False 4
@@ -148,7 +148,7 @@ newChannelWidget channel = do
     [ Gtk.entryEditable := True
     , Gtk.widgetSensitive := True
     ]
-  Gtk.entrySetText maxHistoryEntry "500"
+  Gtk.entrySetText maxHistoryEntry (show defaultMaxHistory')
   let updateMaxHistory = do
         txt <- Gtk.get maxHistoryEntry Gtk.entryText
         let reset = Gtk.entrySetText maxHistoryEntry "(max)"

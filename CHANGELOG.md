@@ -1,6 +1,7 @@
 HEAD
 ---
 * RTS stats compatability
+* make initial max history an option
 
 0.12.2.0
 ---

@@ -110,6 +110,7 @@ data Channel' a
 data PlotterOptions
   = PlotterOptions
     { maxDrawRate :: Double -- ^ limit the draw frequency to this number in Hz
+    , defaultMaxHistory :: Int
     , defaultXAxis :: AxisType
     , defaultYAxis :: AxisType
     }
@@ -118,6 +119,7 @@ instance Default PlotterOptions where
   def =
     PlotterOptions
     { maxDrawRate = 40
+    , defaultMaxHistory = 500
     , defaultXAxis = LinearScalingAutoRange
     , defaultYAxis = LinearScalingAutoRange
     }

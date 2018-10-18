@@ -1,5 +1,9 @@
 HEAD
 ---
+* make initial max history an option
+
+0.12.2.1-0.12.2.3
+---
 * RTS stats compatability
 * upgrade stack LTS
 

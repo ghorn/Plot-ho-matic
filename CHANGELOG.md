@@ -1,6 +1,7 @@
 HEAD
 ---
 * RTS stats compatability
+* upgrade stack LTS
 
 0.12.2.0
 ---

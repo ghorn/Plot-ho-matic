@@ -1,4 +1,4 @@
-resolver: lts-11.6
+resolver: lts-12.21
 
 compiler-check: newer-minor
 
@@ -8,6 +8,8 @@ packages:
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps: [ generic-accessors-0.7.0.0
+            , Chart-1.9
+            , Chart-cairo-1.9
             , gio-0.13.5.0
             , gtk3-0.14.9
             , spatial-math-0.5.0.0

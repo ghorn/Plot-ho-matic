@@ -1,6 +1,7 @@
 HEAD
 ---
 * make initial max history an option
+* only print "no metadata" message once
 
 0.12.2.1-0.12.2.3
 ---

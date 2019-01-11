@@ -11,7 +11,7 @@ module PlotHo.HistoryChannel
 
 import qualified Control.Concurrent as CC
 import Control.Lens ( (^.) )
-import Control.Monad ( when )
+import Control.Monad ( unless, when )
 import qualified Data.Foldable as F
 import qualified Data.IORef as IORef
 import Data.Time ( NominalDiffTime, getCurrentTime, diffUTCTime )
@@ -184,17 +184,22 @@ newHistoryChannel' name = do
   (channel', newHistoryMessage) <- newChannel' name sameSignalTree toSignalTree
     :: IO (Channel' History', History' -> IO ())
 
+  messagePrintedRef <- IORef.newIORef False
+
   let newMessage :: Either Meta (Double, Vector Double) -> IO ()
       newMessage msg = do
         latestChannelValue <- CC.readMVar (chanLatestValueMVar channel')
         case (latestChannelValue, msg) of
-          -- first message and no meta to go with it
-          (Nothing, Right _) ->
-            putStr $ unlines
-              [ "WARNING: First message seen by Plot-ho-matic doesn't have signal tree meta-data."
-              , "This was probably caused by starting the plotter AFTER sending the first telemetry message."
-              , "Try restarting the application sending messages."
-              ]
+          -- First message and no meta to go with it. Print a warning.
+          (Nothing, Right _) -> do
+            messagePrinted <- IORef.readIORef messagePrintedRef
+            unless messagePrinted $ do
+              IORef.writeIORef messagePrintedRef True
+              putStr $ unlines
+                [ "WARNING: First message seen by Plot-ho-matic doesn't have signal tree meta-data."
+                , "This was probably caused by starting the plotter AFTER sending the first telemetry message."
+                , "Try restarting the application sending messages."
+                ]
           -- any message with meta is a reset
           (_, Left meta) -> newHistoryMessage (History' True mempty meta)
           -- later message without meta - no reset

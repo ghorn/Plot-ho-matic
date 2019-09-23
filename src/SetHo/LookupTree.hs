@@ -236,6 +236,7 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
       showField (DWord64 x) = show x
       showField (DString x) = x
       showField DSorry = ""
+      showField DUnit = "()"
 
       showSum :: DSimpleEnum -> String
       showSum denum = case denumToString denum of
@@ -493,6 +494,7 @@ newLookupTreeview showDouble showFloat rootName initialValue getAutocommit commi
         Just x -> DWord64 x
       modifyField (DString _) txt = DString txt
       modifyField DSorry _ = DSorry
+      modifyField DUnit _ = DUnit
 
       modifySum :: DSimpleEnum -> String -> DSimpleEnum
       modifySum denum txt = case denumSetString denum txt of

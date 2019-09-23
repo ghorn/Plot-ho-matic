@@ -67,6 +67,7 @@ historySignalTree axisType topName = makeSignalTree' [topName] accessors
     toDoubleGetter (FieldWord64 f) = fromIntegral . (^. f)
     toDoubleGetter (FieldString _) = const 0
     toDoubleGetter FieldSorry = const 0
+    toDoubleGetter FieldUnit = const 0
 
     toHistoryGetter :: (a -> Double) -> History a -> [[(Double, Double)]]
     toHistoryGetter = case axisType of

@@ -39,8 +39,8 @@ defaultSetHoConfig =
   }
 
 -- | fire up the the GUI
-runSetter :: Maybe SetHoConfig -> String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> IO ()
-runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCommit = do
+runSetter :: Maybe SetHoConfig -> String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> (Int -> DTree -> IO ()) -> IO ()
+runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCommit userRevertToDefaults = do
   let config = case mconfig of
         Just r -> r
         Nothing -> defaultSetHoConfig
@@ -100,6 +100,7 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   buttonCommit <- Gtk.buttonNewWithLabel "commit"
   buttonRefresh <- Gtk.buttonNewWithLabel "refresh"
   buttonTakeUpstream <- Gtk.buttonNewWithLabel "take upstream"
+  buttonRevertToDefaults <- Gtk.buttonNewWithLabel "revert to defaults"
   Gtk.widgetSetTooltipText buttonCommit
     (Just "SET ME SET ME GO HEAD DO IT COME ON SET ME")
   buttonDiff <- Gtk.buttonNewWithLabel "diff"
@@ -176,6 +177,8 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
     , Gtk.boxChildPacking buttonTakeUpstream := Gtk.PackNatural
     , Gtk.containerChild := buttonDiff
     , Gtk.boxChildPacking buttonDiff := Gtk.PackNatural
+    , Gtk.containerChild := buttonRevertToDefaults
+    , Gtk.boxChildPacking buttonRevertToDefaults := Gtk.PackNatural
     , Gtk.containerChild := options
     , Gtk.boxChildPacking options := Gtk.PackNatural
     , Gtk.containerChild := treeviewExpander
@@ -193,6 +196,22 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   _ <- on buttonTakeUpstream Gtk.buttonActivated takeLatestUpstream
 
   _ <- on buttonDiff Gtk.buttonActivated printDiff
+
+  -- How to revert to defaults
+  let revertToDefaults val = do
+        counter <- readIORef counterRef
+        putStrLn $ "sending revert-to-default message " ++ show counter
+        writeIORef counterRef $ 1 + counter
+        makeStatsMessage >>= Gtk.labelSetText statsLabel
+        userRevertToDefaults counter val
+
+  -- It's a bit puzzling to provide the latest staged information to the user revert action, but it
+  -- may be quite convenient to provide a meaningful value depending on how the settings
+  -- communication protocol works.  For example, a channel that cannot represent sum types like
+  -- `Maybe` cannot use `Nothing` to request a revert; it may have to send up a meaningful value to
+  -- produce a well-formed message to the the upstream system, even if that value isn't used.
+  _ <- on buttonRevertToDefaults Gtk.buttonActivated
+       $ getLatestStaged >>= revertToDefaults
 
   let pollForNewMessage = do
         mmsg <- userPollForNewMessage

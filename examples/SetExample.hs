@@ -105,6 +105,13 @@ main = do
         void $ CC.putMVar upMsg (Just (k, x))
         putStrLn "downstream finished commit"
 
+      revertToDefaults :: Int -> DTree -> IO ()
+      revertToDefaults k _x = void $ do
+        putStrLn "downstream starting to revert to defaults"
+        CC.threadDelay 500000
+        void $ CC.putMVar upMsg (Just (k, toDData initialFoo))
+        putStrLn "downstream finished revert to defaults"
+
       pollForNewMessage :: IO (Maybe (Int, DTree))
       pollForNewMessage = do
         mx <- CC.tryTakeMVar downMsg
@@ -113,4 +120,4 @@ main = do
           Just _ -> putStrLn "downstream poll got msg"
         return mx
 
-  runSetter Nothing "settings" (toDData initialFoo) pollForNewMessage refresh commit
+  runSetter Nothing "settings" (toDData initialFoo) pollForNewMessage refresh commit revertToDefaults

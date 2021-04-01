@@ -1,21 +1,21 @@
-resolver: lts-12.21
+resolver: lts-17.8
 
 compiler-check: newer-minor
 
-# Local packages, usually specified by relative directory name
 packages:
 - .
 
-# Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps: [ generic-accessors-0.7.1.0
-            , Chart-1.9
-            , Chart-cairo-1.9
-            , gio-0.13.5.0
-            , gtk3-0.14.9
+            , Chart-cairo-1.9.3
+            , cairo-0.13.8.1
+            , gio-0.13.8.1
+            , glib-0.13.8.1
+            , gtk3-0.15.5
+            , gtk2hs-buildtools-0.13.8.0
+            , pango-0.13.8.1
             , spatial-math-0.5.0.0
             ]
 
-# Override default flag values for local packages and extra-deps
 flags:
   Plot-ho-matic:
     examples: true

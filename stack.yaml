@@ -7,7 +7,7 @@ packages:
 - .
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
-extra-deps: [ generic-accessors-0.7.0.0
+extra-deps: [ generic-accessors-0.7.1.0
             , Chart-1.9
             , Chart-cairo-1.9
             , gio-0.13.5.0

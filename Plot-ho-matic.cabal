@@ -46,7 +46,7 @@ library
                      , colour
                      , containers
                      , data-default-class
-                     , generic-accessors >= 0.7.0.0
+                     , generic-accessors >= 0.7.1.0
                      , glib
                      , gtk3 >= 0.14.2
                      , lens

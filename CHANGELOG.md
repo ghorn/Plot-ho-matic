@@ -1,5 +1,6 @@
 HEAD
 ---
+* Compatability with FieldUnit from generic-accessors
 * make initial max history an option
 * only print "no metadata" message once
 

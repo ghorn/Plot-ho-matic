@@ -39,7 +39,7 @@ defaultSetHoConfig =
   }
 
 -- | fire up the the GUI
-runSetter :: Maybe SetHoConfig -> String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> (Int -> DTree -> IO ()) -> IO ()
+runSetter :: Maybe SetHoConfig -> String -> DTree -> IO (Maybe (Int, DTree)) -> (Int -> IO ()) -> (Int -> DTree -> IO ()) -> Maybe (Int -> DTree -> IO ()) -> IO ()
 runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCommit userRevertToDefaults = do
   let config = case mconfig of
         Just r -> r
@@ -198,12 +198,14 @@ runSetter mconfig rootName initialValue userPollForNewMessage sendRequest userCo
   _ <- on buttonDiff Gtk.buttonActivated printDiff
 
   -- How to revert to defaults
-  let revertToDefaults val = do
-        counter <- readIORef counterRef
-        putStrLn $ "sending revert-to-default message " ++ show counter
-        writeIORef counterRef $ 1 + counter
-        makeStatsMessage >>= Gtk.labelSetText statsLabel
-        userRevertToDefaults counter val
+  let revertToDefaults val = case userRevertToDefaults of
+        Nothing -> pure ()
+        Just userRevertAction -> do
+          counter <- readIORef counterRef
+          putStrLn $ "sending revert-to-default message " ++ show counter
+          writeIORef counterRef $ 1 + counter
+          makeStatsMessage >>= Gtk.labelSetText statsLabel
+          userRevertAction counter val
 
   -- It's a bit puzzling to provide the latest staged information to the user revert action, but it
   -- may be quite convenient to provide a meaningful value depending on how the settings

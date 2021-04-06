@@ -120,4 +120,6 @@ main = do
           Just _ -> putStrLn "downstream poll got msg"
         return mx
 
-  runSetter Nothing "settings" (toDData initialFoo) pollForNewMessage refresh commit revertToDefaults
+  -- If you don't want to support "revert-to-default" functionality, just pass `Nothing` in place of
+  -- @`pure` revertToDefaults@
+  runSetter Nothing "settings" (toDData initialFoo) pollForNewMessage refresh commit $ pure revertToDefaults
